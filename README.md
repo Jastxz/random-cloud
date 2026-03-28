@@ -87,6 +87,23 @@ Comparativa con la misma topología inicial, mismas épocas de entrenamiento (30
 - Las topologías profundas (3+ capas ocultas) necesitan un segundo intento con semilla distinta para encontrar una red viable sin entrenamiento.
 - Cuando la nube no reduce (0%), significa que la topología original ya era cercana al mínimo para ese umbral.
 
+### Wine (clasificación de vinos, 3 clases)
+
+178 muestras, 13 features, 3 clases. Split 80/20 estratificado (142 train, 36 test). 100 épocas, LR=0.1. Nube: 50 redes, umbral=0.4, eliminar=1.
+
+| Topología inicial | Params | Clásico (test) | Nube (test) | Topología final | Reducción params |
+|---|---|---|---|---|---|
+| [13, 8, 3] | 139 | 94.4% | 94.4% | [13, 5, 3] | -36.7% |
+| [13, 16, 3] | 275 | 94.4% | 94.4% | [13, 7, 3] | -55.6% |
+| [13, 16, 8, 3] | 387 | 94.4% | 94.4% | [13, 16, 5, 3] | -15.5% |
+| [13, 32, 16, 3] | 1,027 | 91.7% | 94.4% | [13, 32, 13, 3] | -10.5% |
+
+**Observaciones:**
+- La nube iguala o supera al clásico en todos los casos, con menos parámetros.
+- Con [13, 16, 3] la nube reduce un 55.6% los parámetros (275→122) sin perder precisión.
+- Con [13, 32, 16, 3] la nube supera al clásico (94.4% vs 91.7%) con 10.5% menos parámetros.
+- Todos los experimentos exitosos al primer intento (semilla=42).
+
 ## Estructura del proyecto
 
 ```
