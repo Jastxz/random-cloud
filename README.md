@@ -104,6 +104,23 @@ Comparativa con la misma topología inicial, mismas épocas de entrenamiento (30
 - Con [13, 32, 16, 3] la nube supera al clásico (94.4% vs 91.7%) con 10.5% menos parámetros.
 - Todos los experimentos exitosos al primer intento (semilla=42).
 
+### Fashion-MNIST (prendas de ropa, 10 clases)
+
+Misma estructura que MNIST (784 entradas, 10 clases) pero más difícil. Topología [784, 64, 32, 10] (52,650 params). 30 épocas, LR=0.1. Nube: 50 redes, umbral=0.12, eliminar=2. Test set fijo de 10,000 imágenes.
+
+| Muestras | Clásico (test) | Nube (test) | Topología final | Reducción params |
+|----------|---------------|------------|----------------|-----------------|
+| 1,000 | 77.9% | 77.0% | [784, 64, 24, 10] | -1.1% |
+| 5,000 | 82.6% | 81.7% | [784, 64, 24, 10] | -1.1% |
+| 10,000 | 83.2% | 83.1% | [784, 64, 24, 10] | -1.1% |
+| 60,000 | 86.3% | 86.3% | [784, 64, 24, 10] | -1.1% |
+
+**Observaciones:**
+- La nube iguala al clásico con 60K muestras (86.3% ambos) con 1.1% menos parámetros.
+- La brecha se cierra con más datos: de 0.9pp (1K) a 0pp (60K).
+- La nube siempre reduce la segunda capa oculta de 32→24 neuronas.
+- Comportamiento muy similar a MNIST pero con precisiones ~10pp menores (problema más difícil).
+
 ### CIFAR-10 (imágenes a color, 10 clases)
 
 32×32×3 = 3,072 entradas, 10 clases. 30 épocas, LR=0.05. Nube: 50 redes, umbral=0.12, eliminar=2. 8 threads.
