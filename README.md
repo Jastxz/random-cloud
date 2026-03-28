@@ -128,6 +128,23 @@ Comparativa con la misma topología inicial, mismas épocas de entrenamiento (30
 - Con [3072, 64, 32, 10] la nube casi iguala al clásico (41.8% vs 42.5%) sin reducir topología.
 - El overhead de exploración es significativo en problemas de alta dimensionalidad (~2.5x más lento que el clásico).
 
+### Two Moons (frontera no lineal, 2 clases)
+
+Dataset sintético. 1,000 train, 500 test, 2 features, ruido=0.1. 200 épocas, LR=0.5. Nube: 50 redes, umbral=0.6, eliminar=1.
+
+| Topología inicial | Params | Clásico (test) | Nube (test) | Topología final | Reducción params |
+|---|---|---|---|---|---|
+| [2, 4, 2] | 22 | 100.0% | 100.0% | [2, 3, 2] | -22.7% |
+| [2, 8, 2] | 42 | 100.0% | 100.0% | [2, 6, 2] | -23.8% |
+| [2, 8, 4, 2] | 70 | 100.0% | 100.0% | [2, 8, 3, 2] | -15.7% |
+| [2, 16, 8, 2] | 202 | 99.8% | 99.8% | [2, 16, 7, 2] | -9.4% |
+| [2, 16, 8, 4, 2] | 230 | 100.0% | 100.0% | [2, 16, 8, 3, 2] | -4.8% |
+
+**Observaciones:**
+- La nube iguala al clásico en todos los casos, con reducciones de 5-24% en parámetros.
+- Todos exitosos al primer intento.
+- El método descubre que [2,4,2] puede reducirse a [2,3,2] (3 neuronas ocultas bastan para Two Moons).
+
 ## Rendimiento
 
 El motor paraleliza automáticamente la fase de exploración cuando Julia se lanza con múltiples threads:
