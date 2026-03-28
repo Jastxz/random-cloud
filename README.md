@@ -70,6 +70,23 @@ Comparativa con la misma topología inicial, mismas épocas de entrenamiento (30
 - La reducción de parámetros es modesta (2%) porque la capa 784→32 domina con 25,088 parámetros.
 - El método es ~8-9x más lento por el overhead de exploración (2,400 evaluaciones sin entrenamiento).
 
+### Iris (clasificación de flores, 3 clases)
+
+150 muestras, 4 features, 3 clases. Split 80/20 estratificado (120 train, 30 test). 100 épocas, LR=0.1. Nube: 50 redes, umbral=0.4, eliminar=1. Hasta 3 reintentos con semillas distintas.
+
+| Topología inicial | Params | Clásico (test) | Nube (test) | Topología final | Reducción params | Intentos |
+|---|---|---|---|---|---|---|
+| [4, 8, 3] | 67 | 100.0% | 96.7% | [4, 1, 3] | -83.6% | 1 |
+| [4, 8, 4, 3] | 91 | 100.0% | 100.0% | [4, 8, 4, 3] | 0% | 2 |
+| [4, 16, 8, 3] | 243 | 100.0% | 100.0% | [4, 16, 3, 3] | -41.2% | 1 |
+| [4, 16, 8, 4, 3] | 267 | 100.0% | 100.0% | [4, 16, 8, 4, 3] | 0% | 2 |
+
+**Observaciones:**
+- Con [4, 16, 8, 3] la nube alcanza 100% test con 41% menos parámetros (243→143).
+- Con [4, 8, 3] la nube reduce un 83.6% los parámetros (67→11): descubre que 1 neurona oculta basta.
+- Las topologías profundas (3+ capas ocultas) necesitan un segundo intento con semilla distinta para encontrar una red viable sin entrenamiento.
+- Cuando la nube no reduce (0%), significa que la topología original ya era cercana al mínimo para ese umbral.
+
 ## Estructura del proyecto
 
 ```
