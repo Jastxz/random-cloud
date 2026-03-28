@@ -128,6 +128,28 @@ Comparativa con la misma topología inicial, mismas épocas de entrenamiento (30
 - Con [3072, 64, 32, 10] la nube casi iguala al clásico (41.8% vs 42.5%) sin reducir topología.
 - El overhead de exploración es significativo en problemas de alta dimensionalidad (~2.5x más lento que el clásico).
 
+### Boston Housing (regresión, precio de vivienda)
+
+506 muestras, 13 features, 1 salida (precio normalizado). Split 80/20 (405 train, 101 test). 500 épocas, LR=0.01. Nube: 100 redes, umbral=0.05, eliminar=1. Métrica: R² (coeficiente de determinación).
+
+| Topología inicial | Params | Clásico (R² test) | Nube (R² test) | Topología final | Reducción params |
+|---|---|---|---|---|---|
+| [13, 8, 1] | 121 | 0.679 | 0.692 | [13, 8, 1] | 0% |
+| [13, 16, 1] | 241 | 0.702 | 0.702 | [13, 13, 1] | -18.7% |
+| [13, 16, 8, 1] | 369 | 0.685 | 0.696 | [13, 16, 4, 1] | -19.5% |
+| [13, 32, 16, 1] | 993 | 0.693 | 0.705 | [13, 32, 16, 1] | 0% |
+| [13, 64, 32, 1] | 3,009 | 0.744 | 0.725 | [13, 64, 29, 1] | -6.6% |
+| [13, 64, 32, 16, 1] | 3,521 | 0.726 | 0.741 | [13, 64, 32, 7, 1] | -8.7% |
+| [13, 128, 64, 1] | 10,113 | 0.748 | 0.723 | [13, 128, 22, 1] | -54.0% |
+| [13, 128, 64, 32, 1] | 12,161 | 0.756 | 0.756 | [13, 128, 64, 16, 1] | -8.7% |
+
+**Observaciones:**
+- La nube iguala o supera al clásico en 6 de 8 escenarios.
+- Con [13, 128, 64, 1] la nube reduce un 54% los parámetros (10,113→4,651) con solo 0.025 de pérdida en R².
+- Con [13, 128, 64, 32, 1] la nube iguala al clásico (R²=0.756) con 8.7% menos parámetros.
+- El R² máximo (~0.76) está limitado por la arquitectura feedforward con sigmoid, no por el método.
+- Primer test exitoso del método en regresión usando `evaluar_regresion` (R²).
+
 ### Breast Cancer Wisconsin (diagnóstico, 2 clases)
 
 569 muestras, 30 features, 2 clases (benigno/maligno). Split 80/20 estratificado (456 train, 113 test). 100 épocas, LR=0.1. Nube: 50 redes, umbral=0.7, eliminar=1.

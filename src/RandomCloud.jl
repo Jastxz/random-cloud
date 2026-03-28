@@ -9,6 +9,7 @@ export MotorNube, ejecutar
 export InformeNube
 export reconstruir
 export EntrenarBuffers
+export evaluar, evaluar_regresion
 
 include("configuracion.jl")
 include("red_neuronal.jl")
