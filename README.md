@@ -104,6 +104,50 @@ Comparativa con la misma topología inicial, mismas épocas de entrenamiento (30
 - Con [13, 32, 16, 3] la nube supera al clásico (94.4% vs 91.7%) con 10.5% menos parámetros.
 - Todos los experimentos exitosos al primer intento (semilla=42).
 
+### CIFAR-10 (imágenes a color, 10 clases)
+
+32×32×3 = 3,072 entradas, 10 clases. 30 épocas, LR=0.05. Nube: 50 redes, umbral=0.12, eliminar=2. 8 threads.
+
+**5,000 muestras de train, 10,000 de test:**
+
+| Topología inicial | Params | Clásico (test) | Nube (test) | Topología final | Reducción params |
+|---|---|---|---|---|---|
+| [3072, 64, 10] | 197,322 | 31.6% | 29.9% | [3072, 24, 10] | -62.5% |
+| [3072, 64, 32, 10] | 199,082 | 32.5% | 34.0% | [3072, 64, 32, 10] | 0% |
+
+**50,000 muestras de train (dataset completo), 10,000 de test:**
+
+| Topología inicial | Params | Clásico (test) | Nube (test) | Topología final | Reducción params | Tiempo clásico | Tiempo nube |
+|---|---|---|---|---|---|---|---|
+| [3072, 64, 10] | 197,322 | 41.6% | 37.3% | [3072, 24, 10] | -62.5% | 8.2 min | 20.6 min |
+| [3072, 64, 32, 10] | 199,082 | 42.5% | 41.8% | [3072, 64, 32, 10] | 0% | 8.1 min | 47.3 min |
+
+**Observaciones:**
+- CIFAR-10 es un problema difícil para redes feedforward sin convoluciones (~40% con estas topologías).
+- Con [3072, 64, 10] la nube reduce un 62.5% los parámetros (197K→74K) con 4.3pp de pérdida.
+- Con [3072, 64, 32, 10] la nube casi iguala al clásico (41.8% vs 42.5%) sin reducir topología.
+- El overhead de exploración es significativo en problemas de alta dimensionalidad (~2.5x más lento que el clásico).
+
+## Rendimiento
+
+El motor paraleliza automáticamente la fase de exploración cuando Julia se lanza con múltiples threads:
+
+```bash
+# Lanzar con 8 threads (recomendado)
+julia --project=. -t 8 examples/mnist.jl
+
+# O usar auto-detección de cores
+julia --project=. -t auto examples/mnist.jl
+```
+
+| Benchmark (MNIST 5K, nube=50) | 1 thread | 8 threads | Speedup |
+|---|---|---|---|
+| Exploración + refinamiento | 28.5s | 11.4s | 2.5x |
+
+La fase de exploración (evaluar redes sin entrenar) se paraleliza con `Threads.@threads`. El refinamiento final con backpropagation es secuencial. BLAS (LinearAlgebra) puede usar threads adicionales internamente.
+
+No se usa GPU — las matrices son demasiado pequeñas para que el overhead de transferencia CPU↔GPU compense. Para redes feedforward con estas topologías, multi-threading en CPU es más eficiente.
+
 ## Estructura del proyecto
 
 ```
