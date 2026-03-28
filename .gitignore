@@ -30,4 +30,4 @@ JuliaLocalPreferences.toml
 # Other
 .kiro
 SuppositionDB/
-.cache_breastcancer.csv
+.cache*

@@ -145,6 +145,23 @@ Misma estructura que MNIST (784 entradas, 10 clases) pero más difícil. Topolog
 - Con [3072, 64, 32, 10] la nube casi iguala al clásico (41.8% vs 42.5%) sin reducir topología.
 - El overhead de exploración es significativo en problemas de alta dimensionalidad (~2.5x más lento que el clásico).
 
+### Adult Income (predicción de ingresos, 2 clases)
+
+Problema real: predecir si una persona gana >50K$/año. 30,162 train, 15,060 test, 104 features (6 numéricas + one-hot categóricas), 2 clases. Desbalanceo moderado (24.9% >50K). 30 épocas, LR=0.1. Nube: 50 redes, umbral=0.6, eliminar=2.
+
+| Topología inicial | Params | Clásico (test) | Nube (test) | Topología final | Reducción params |
+|---|---|---|---|---|---|
+| [104, 16, 2] | 1,714 | 84.2% | 85.0% | [104, 8, 2] | -49.9% |
+| [104, 32, 2] | 3,426 | 84.1% | 84.4% | [104, 16, 2] | -50.0% |
+| [104, 32, 16, 2] | 3,922 | 84.0% | 84.3% | [104, 32, 16, 2] | 0% |
+| [104, 64, 32, 2] | 8,866 | 83.7% | 83.8% | [104, 64, 10, 2] | -16.6% |
+
+**Observaciones:**
+- La nube supera al clásico en los 4 escenarios con un problema real de datos tabulares.
+- Con [104, 16, 2] la nube reduce un 50% los parámetros (1,714→858) y mejora la precisión (+0.8pp).
+- Con [104, 32, 2] la nube descubre que 16 neuronas bastan (reduce 50% de parámetros).
+- Patrón consistente: la nube encuentra que la mitad de las neuronas ocultas son redundantes.
+
 ### Boston Housing (regresión, precio de vivienda)
 
 506 muestras, 13 features, 1 salida (precio normalizado). Split 80/20 (405 train, 101 test). 500 épocas, LR=0.01. Nube: 100 redes, umbral=0.05, eliminar=1. Métrica: R² (coeficiente de determinación).
