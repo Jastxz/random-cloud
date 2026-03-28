@@ -128,6 +128,22 @@ Comparativa con la misma topología inicial, mismas épocas de entrenamiento (30
 - Con [3072, 64, 32, 10] la nube casi iguala al clásico (41.8% vs 42.5%) sin reducir topología.
 - El overhead de exploración es significativo en problemas de alta dimensionalidad (~2.5x más lento que el clásico).
 
+### Breast Cancer Wisconsin (diagnóstico, 2 clases)
+
+569 muestras, 30 features, 2 clases (benigno/maligno). Split 80/20 estratificado (456 train, 113 test). 100 épocas, LR=0.1. Nube: 50 redes, umbral=0.7, eliminar=1.
+
+| Topología inicial | Params | Clásico (test) | Nube (test) | Topología final | Reducción params |
+|---|---|---|---|---|---|
+| [30, 8, 2] | 266 | 97.3% | 97.3% | [30, 2, 2] | -74.4% |
+| [30, 16, 2] | 530 | 97.3% | 97.3% | [30, 14, 2] | -12.5% |
+| [30, 16, 8, 2] | 650 | 97.3% | 95.6% | [30, 16, 1, 2] | -20.5% |
+| [30, 32, 16, 2] | 1,554 | 97.3% | 97.3% | [30, 32, 2, 2] | -31.5% |
+
+**Observaciones:**
+- Con [30, 8, 2] la nube reduce un 74.4% los parámetros (266→68): descubre que 2 neuronas ocultas bastan para clasificar cáncer de mama.
+- En 3 de 4 escenarios la nube iguala al clásico con menos parámetros.
+- Todos exitosos al primer intento.
+
 ### Two Moons (frontera no lineal, 2 clases)
 
 Dataset sintético. 1,000 train, 500 test, 2 features, ruido=0.1. 200 épocas, LR=0.5. Nube: 50 redes, umbral=0.6, eliminar=1.
