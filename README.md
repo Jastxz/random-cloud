@@ -145,6 +145,23 @@ Misma estructura que MNIST (784 entradas, 10 clases) pero más difícil. Topolog
 - Con [3072, 64, 32, 10] la nube casi iguala al clásico (41.8% vs 42.5%) sin reducir topología.
 - El overhead de exploración es significativo en problemas de alta dimensionalidad (~2.5x más lento que el clásico).
 
+### Sonar (minas vs rocas, 2 clases)
+
+208 muestras, 60 features, 2 clases. Ratio features/muestras muy alto (60/208). Split 80/20 estratificado (167 train, 41 test). 200 épocas, LR=0.1. Nube: 50 redes, umbral=0.55, eliminar=1.
+
+| Topología inicial | Params | Clásico (test) | Nube (test) | Topología final | Reducción params |
+|---|---|---|---|---|---|
+| [60, 8, 2] | 506 | 78.0% | 80.5% | [60, 1, 2] | -87.2% |
+| [60, 16, 2] | 1,010 | 80.5% | 75.6% | [60, 10, 2] | -37.4% |
+| [60, 32, 2] | 2,018 | 80.5% | 78.0% | [60, 16, 2] | -50.0% |
+| [60, 16, 8, 2] | 1,130 | 78.0% | 75.6% | [60, 16, 1, 2] | -11.8% |
+| [60, 32, 16, 2] | 2,514 | 78.0% | 75.6% | [60, 32, 13, 2] | -4.2% |
+
+**Observaciones:**
+- Con [60, 8, 2] la nube supera al clásico (80.5% vs 78.0%) con 87.2% menos parámetros: descubre que 1 sola neurona oculta basta.
+- Sonar tiene el ratio features/muestras más alto de todos los datasets (60/208), lo que hace la búsqueda sin entrenamiento más difícil.
+- En topologías más grandes la nube sacrifica 2-5pp a cambio de reducciones significativas (37-50%).
+
 ### Ionosphere (señales de radar, 2 clases)
 
 351 muestras, 34 features, 2 clases (good/bad radar returns). Split 80/20 estratificado (281 train, 70 test). 200 épocas, LR=0.1. Nube: 50 redes, umbral=0.6, eliminar=1.
