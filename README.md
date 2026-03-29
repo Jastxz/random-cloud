@@ -145,6 +145,22 @@ Misma estructura que MNIST (784 entradas, 10 clases) pero más difícil. Topolog
 - Con [3072, 64, 32, 10] la nube casi iguala al clásico (41.8% vs 42.5%) sin reducir topología.
 - El overhead de exploración es significativo en problemas de alta dimensionalidad (~2.5x más lento que el clásico).
 
+### Optical Digits (dígitos 8×8, 10 clases)
+
+Imágenes 8×8 = 64 features, 10 clases. 3,823 train + 1,797 test (split predefinido UCI). 100 épocas, LR=0.1. Nube: 50 redes, umbral=0.15, eliminar=2.
+
+| Topología inicial | Params | Clásico (test) | Nube (test) | Topología final | Reducción params |
+|---|---|---|---|---|---|
+| [64, 16, 10] | 1,210 | 95.8% | 95.5% | [64, 14, 10] | -12.4% |
+| [64, 32, 10] | 2,410 | 96.3% | 95.9% | [64, 12, 10] | -62.2% |
+| [64, 32, 16, 10] | 2,778 | 96.5% | 96.3% | [64, 32, 8, 10] | -12.4% |
+| [64, 64, 32, 10] | 6,570 | 96.8% | 96.4% | [64, 64, 14, 10] | -20.5% |
+
+**Observaciones:**
+- La nube se acerca mucho al clásico (0.2-0.4pp de diferencia) con reducciones de 12-62%.
+- Con [64, 32, 10] la nube reduce un 62.2% los parámetros (2,410→912) perdiendo solo 0.4pp.
+- Puente entre datasets tabulares y MNIST: 64 features vs 784, con resultados >95% en ambos métodos.
+
 ### Sonar (minas vs rocas, 2 clases)
 
 208 muestras, 60 features, 2 clases. Ratio features/muestras muy alto (60/208). Split 80/20 estratificado (167 train, 41 test). 200 épocas, LR=0.1. Nube: 50 redes, umbral=0.55, eliminar=1.
