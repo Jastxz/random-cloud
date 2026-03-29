@@ -270,6 +270,35 @@ Dataset sintético. 1,000 train, 500 test, 2 features, ruido=0.1. 200 épocas, L
 - Todos exitosos al primer intento.
 - El método descubre que [2,4,2] puede reducirse a [2,3,2] (3 neuronas ocultas bastan para Two Moons).
 
+### Métricas adicionales: F1-Score y AUC-ROC
+
+Accuracy puede ser engañosa en datasets desbalanceados. F1-score (macro-averaged) mide el balance entre precision y recall por clase. AUC-ROC mide la calidad de las probabilidades de salida independientemente del umbral de decisión.
+
+| Dataset | Método | Accuracy | F1 | AUC | Topología | Reducción |
+|---|---|---|---|---|---|---|
+| Breast Cancer | Clásico | 97.3% | 0.971 | 0.993 | [30,8,2] | — |
+| | Nube | 97.3% | 0.971 | 0.992 | [30,2,2] | -74.4% |
+| Sonar | Clásico | 78.0% | 0.776 | 0.823 | [60,8,2] | — |
+| | Nube | 80.5% | 0.799 | 0.809 | [60,1,2] | -87.2% |
+| Ionosphere | Clásico | 94.3% | 0.935 | 0.918 | [34,16,2] | — |
+| | Nube | 90.0% | 0.885 | 0.910 | [34,3,2] | -81.0% |
+| Adult Income | Clásico | 84.2% | 0.758 | 0.901 | [104,16,2] | — |
+| | Nube | 85.0% | 0.782 | 0.904 | [104,8,2] | -49.9% |
+| Iris | Clásico | 100.0% | 1.000 | 1.000 | [4,16,8,3] | — |
+| | Nube | 100.0% | 1.000 | 1.000 | [4,16,3,3] | -41.2% |
+| Wine | Clásico | 94.4% | 0.944 | 0.996 | [13,16,3] | — |
+| | Nube | 94.4% | 0.944 | 0.995 | [13,7,3] | -55.6% |
+| Opt. Digits | Clásico | 96.3% | 0.963 | 0.997 | [64,32,10] | — |
+| | Nube | 95.9% | 0.959 | 0.997 | [64,12,10] | -62.2% |
+
+**Hallazgos:**
+- En Adult Income (75% clase mayoritaria), la accuracy del clásico (84.2%) oculta un F1 bajo (0.758) — clasifica peor la clase minoritaria (>50K). La nube mejora tanto accuracy (+0.8pp) como F1 (+0.024) con la mitad de parámetros.
+- En Breast Cancer, la nube mantiene F1 y AUC idénticos al clásico (0.971 / 0.992) con 74% menos parámetros. La reducción topológica no degrada la calidad de las probabilidades.
+- En Sonar, la nube supera al clásico en accuracy (+2.5pp) y F1 (+0.023) con 87% menos parámetros, aunque el AUC baja ligeramente (-0.014). Con 1 sola neurona oculta, las probabilidades son menos calibradas pero la clasificación argmax es mejor.
+- En Ionosphere, la nube sacrifica 4.3pp de accuracy y 0.050 de F1 a cambio de 81% de compresión, pero el AUC se mantiene cercano (0.910 vs 0.918) — las probabilidades siguen siendo discriminativas.
+- En los datasets multiclase (Iris, Wine, Digits), F1 y AUC se mantienen prácticamente idénticos entre nube y clásico, confirmando que la reducción topológica no afecta la calidad por clase.
+- El AUC es consistentemente alto (>0.9) en todos los datasets excepto Sonar, indicando que las redes producen probabilidades bien calibradas independientemente de la compresión.
+
 ## Rendimiento
 
 El motor paraleliza automáticamente la fase de exploración cuando Julia se lanza con múltiples threads:

@@ -9,7 +9,7 @@ export MotorNube, ejecutar
 export InformeNube
 export reconstruir
 export EntrenarBuffers
-export evaluar, evaluar_regresion
+export evaluar, evaluar_regresion, evaluar_f1, evaluar_auc
 export activaciones_por_capa
 
 include("configuracion.jl")

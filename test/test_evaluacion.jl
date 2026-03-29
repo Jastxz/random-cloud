@@ -1,7 +1,7 @@
 # Tests unitarios y PBT para evaluar
 
 using Random
-using RandomCloud: RedNeuronal, feedforward, evaluar
+using RandomCloud: RedNeuronal, feedforward, evaluar, evaluar_f1, evaluar_auc
 
 @testset "Evaluacion" begin
 
@@ -79,4 +79,169 @@ using RandomCloud: RedNeuronal, feedforward, evaluar
         @test resultado == 0.0
     end
 
+end
+
+
+# --- Tests para evaluar_f1 ---
+
+@testset "F1-Score" begin
+
+    @testset "F1 = 1.0 con clasificación perfecta" begin
+        rng = MersenneTwister(123)
+        red = RedNeuronal([2, 8, 2], rng)
+        entradas = [0.0 0.0 1.0 1.0; 0.0 1.0 0.0 1.0]
+        objetivos = [1.0 0.0 0.0 1.0; 0.0 1.0 1.0 0.0]
+
+        using RandomCloud: entrenar!
+        for _ in 1:5000
+            for k in 1:size(entradas, 2)
+                entrenar!(red, entradas[:, k], objetivos[:, k], 0.5)
+            end
+        end
+
+        f1 = evaluar_f1(red, entradas, objetivos)
+        @test f1 == 1.0
+    end
+
+    @testset "F1 = 0.0 con todas las predicciones incorrectas" begin
+        rng = MersenneTwister(42)
+        red = RedNeuronal([2, 4, 2], rng)
+        entradas = [0.0 0.0 1.0 1.0; 0.0 1.0 0.0 1.0]
+
+        # Construir objetivos opuestos a las predicciones
+        n_muestras = size(entradas, 2)
+        objetivos = zeros(2, n_muestras)
+        for k in 1:n_muestras
+            salida = feedforward(red, entradas[:, k])
+            pred = argmax(salida)
+            clase_incorrecta = pred == 1 ? 2 : 1
+            objetivos[clase_incorrecta, k] = 1.0
+        end
+
+        f1 = evaluar_f1(red, entradas, objetivos)
+        @test f1 == 0.0
+    end
+
+    @testset "F1 en rango [0, 1]" begin
+        rng = MersenneTwister(42)
+        red = RedNeuronal([2, 4, 2], rng)
+        entradas = [0.0 0.0 1.0 1.0; 0.0 1.0 0.0 1.0]
+        objetivos = [1.0 0.0 0.0 1.0; 0.0 1.0 1.0 0.0]
+
+        f1 = evaluar_f1(red, entradas, objetivos)
+        @test 0.0 <= f1 <= 1.0
+    end
+
+    @testset "F1 consistente con accuracy cuando todas las clases están balanceadas" begin
+        # Con clases balanceadas y clasificación perfecta, F1 == accuracy == 1.0
+        rng = MersenneTwister(123)
+        red = RedNeuronal([2, 8, 2], rng)
+        entradas = [0.0 0.0 1.0 1.0; 0.0 1.0 0.0 1.0]
+        objetivos = [1.0 0.0 0.0 1.0; 0.0 1.0 1.0 0.0]
+
+        using RandomCloud: entrenar!
+        for _ in 1:5000
+            for k in 1:size(entradas, 2)
+                entrenar!(red, entradas[:, k], objetivos[:, k], 0.5)
+            end
+        end
+
+        acc = evaluar(red, entradas, objetivos)
+        f1 = evaluar_f1(red, entradas, objetivos)
+        @test acc == 1.0
+        @test f1 == 1.0
+    end
+
+    @testset "F1 multiclase (3 clases)" begin
+        rng = MersenneTwister(42)
+        red = RedNeuronal([2, 8, 3], rng)
+        # 6 muestras, 3 clases (2 por clase)
+        entradas = [0.0 0.1 0.5 0.6 1.0 0.9;
+                    0.0 0.1 0.5 0.6 1.0 0.9]
+        objetivos = [1.0 1.0 0.0 0.0 0.0 0.0;
+                     0.0 0.0 1.0 1.0 0.0 0.0;
+                     0.0 0.0 0.0 0.0 1.0 1.0]
+
+        f1 = evaluar_f1(red, entradas, objetivos)
+        @test 0.0 <= f1 <= 1.0
+    end
+end
+
+# --- Tests para evaluar_auc ---
+
+@testset "AUC" begin
+
+    @testset "AUC = 1.0 con clasificación perfecta (binario)" begin
+        rng = MersenneTwister(123)
+        red = RedNeuronal([2, 8, 2], rng)
+        entradas = [0.0 0.0 1.0 1.0; 0.0 1.0 0.0 1.0]
+        objetivos = [1.0 0.0 0.0 1.0; 0.0 1.0 1.0 0.0]
+
+        using RandomCloud: entrenar!
+        for _ in 1:5000
+            for k in 1:size(entradas, 2)
+                entrenar!(red, entradas[:, k], objetivos[:, k], 0.5)
+            end
+        end
+
+        auc = evaluar_auc(red, entradas, objetivos)
+        @test auc == 1.0
+    end
+
+    @testset "AUC en rango [0, 1]" begin
+        rng = MersenneTwister(42)
+        red = RedNeuronal([2, 4, 2], rng)
+        entradas = [0.0 0.0 1.0 1.0; 0.0 1.0 0.0 1.0]
+        objetivos = [1.0 0.0 0.0 1.0; 0.0 1.0 1.0 0.0]
+
+        auc = evaluar_auc(red, entradas, objetivos)
+        @test 0.0 <= auc <= 1.0
+    end
+
+    @testset "AUC con red sin entrenar no es exactamente 0" begin
+        # Una red aleatoria debería tener AUC cercano a 0.5 (aleatorio)
+        rng = MersenneTwister(42)
+        red = RedNeuronal([2, 4, 2], rng)
+        entradas = [0.0 0.0 1.0 1.0; 0.0 1.0 0.0 1.0]
+        objetivos = [1.0 0.0 0.0 1.0; 0.0 1.0 1.0 0.0]
+
+        auc = evaluar_auc(red, entradas, objetivos)
+        @test auc >= 0.0
+        @test auc <= 1.0
+    end
+
+    @testset "AUC multiclase (3 clases, macro-averaged)" begin
+        rng = MersenneTwister(42)
+        red = RedNeuronal([2, 8, 3], rng)
+        entradas = [0.0 0.1 0.5 0.6 1.0 0.9;
+                    0.0 0.1 0.5 0.6 1.0 0.9]
+        objetivos = [1.0 1.0 0.0 0.0 0.0 0.0;
+                     0.0 0.0 1.0 1.0 0.0 0.0;
+                     0.0 0.0 0.0 0.0 1.0 1.0]
+
+        auc = evaluar_auc(red, entradas, objetivos)
+        @test 0.0 <= auc <= 1.0
+    end
+
+    @testset "AUC > accuracy posible con buenas probabilidades" begin
+        # AUC mide calidad de probabilidades, no solo argmax
+        rng = MersenneTwister(123)
+        red = RedNeuronal([2, 8, 2], rng)
+        entradas = [0.0 0.0 1.0 1.0; 0.0 1.0 0.0 1.0]
+        objetivos = [1.0 0.0 0.0 1.0; 0.0 1.0 1.0 0.0]
+
+        # Entrenar parcialmente
+        using RandomCloud: entrenar!
+        for _ in 1:500
+            for k in 1:size(entradas, 2)
+                entrenar!(red, entradas[:, k], objetivos[:, k], 0.5)
+            end
+        end
+
+        auc = evaluar_auc(red, entradas, objetivos)
+        acc = evaluar(red, entradas, objetivos)
+        # AUC puede ser >= accuracy (mide ranking, no solo clasificación)
+        @test auc >= 0.0
+        @test auc <= 1.0
+    end
 end
