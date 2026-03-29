@@ -1,5 +1,7 @@
 # ConfiguracionNube — Hiperparámetros del Método de la Nube Aleatoria
 
+const ACTIVACIONES_VALIDAS = (:sigmoid, :relu, :identidad)
+
 struct ConfiguracionNube
     tamano_nube::Int
     topologia_inicial::Vector{Int}
@@ -8,6 +10,8 @@ struct ConfiguracionNube
     epocas_refinamiento::Int
     tasa_aprendizaje::Float64
     semilla::Int
+    activacion::Symbol
+    batch_size::Int
 
     function ConfiguracionNube(;
         tamano_nube::Int = 10,
@@ -16,7 +20,9 @@ struct ConfiguracionNube
         neuronas_eliminar::Int = 1,
         epocas_refinamiento::Int = 1000,
         tasa_aprendizaje::Float64 = 0.1,
-        semilla::Int = 42
+        semilla::Int = 42,
+        activacion::Symbol = :sigmoid,
+        batch_size::Int = 0
     )
         tamano_nube < 1 && throw(ArgumentError(
             "tamano_nube debe ser ≥ 1, se recibió: $tamano_nube"))
@@ -35,7 +41,14 @@ struct ConfiguracionNube
                 "las capas ocultas requieren al menos 1 neurona"))
         end
 
+        activacion in ACTIVACIONES_VALIDAS || throw(ArgumentError(
+            "activacion debe ser una de $ACTIVACIONES_VALIDAS, se recibió: :$activacion"))
+
+        batch_size < 0 && throw(ArgumentError(
+            "batch_size debe ser ≥ 0 (0 = sample-by-sample), se recibió: $batch_size"))
+
         new(tamano_nube, copy(topologia_inicial), umbral_acierto,
-            neuronas_eliminar, epocas_refinamiento, tasa_aprendizaje, semilla)
+            neuronas_eliminar, epocas_refinamiento, tasa_aprendizaje, semilla,
+            activacion, batch_size)
     end
 end

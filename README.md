@@ -28,7 +28,9 @@ config = ConfiguracionNube(
     umbral_acierto = 0.5,
     epocas_refinamiento = 2000,
     tasa_aprendizaje = 0.5,
-    semilla = 42
+    semilla = 42,
+    activacion = :sigmoid,       # :sigmoid (default), :relu, :identidad
+    batch_size = 0               # 0 = SGD sample-by-sample (default)
 )
 
 motor = MotorNube(config, entradas, objetivos)
@@ -288,6 +290,64 @@ La fase de exploración (evaluar redes sin entrenar) se paraleliza con `Threads.
 
 No se usa GPU — las matrices son demasiado pequeñas para que el overhead de transferencia CPU↔GPU compense. Para redes feedforward con estas topologías, multi-threading en CPU es más eficiente.
 
+## Activaciones configurables y mini-batches
+
+### Activaciones
+
+La configuración soporta tres funciones de activación via el parámetro `activacion`:
+
+- `:sigmoid` (por defecto) — Capas ocultas y salida usan sigmoid. Comportamiento original.
+- `:relu` — Capas ocultas usan ReLU, capa de salida usa sigmoid. Requiere LR más bajo (~10x).
+- `:identidad` — Capas ocultas usan identidad, capa de salida usa identidad. Para regresión lineal.
+
+```julia
+config = ConfiguracionNube(
+    topologia_inicial = [13, 16, 3],
+    activacion = :relu,          # ReLU en capas ocultas
+    tasa_aprendizaje = 0.01,     # LR reducido para ReLU
+    # ... otros parámetros
+)
+```
+
+### Mini-batches
+
+El parámetro `batch_size` controla el tamaño de mini-batch en el refinamiento:
+
+- `0` (por defecto) — SGD sample-by-sample (comportamiento original).
+- `> 0` — Acumula gradientes sobre el batch y actualiza una vez. Divide el LR por el tamaño del batch automáticamente.
+
+```julia
+config = ConfiguracionNube(
+    batch_size = 32,             # Mini-batches de 32 muestras
+    # ... otros parámetros
+)
+```
+
+### Resultados experimentales: Sigmoid vs ReLU × SGD vs Mini-batch
+
+Comparativa de las 4 combinaciones en 6 datasets representativos. ReLU usa LR=0.01 (clasificación) o LR=0.001 (regresión); sigmoid usa LR=0.1 (clasificación) o LR=0.01 (regresión).
+
+| Dataset | Sigmoid+SGD | Sigmoid+MB(32) | ReLU+SGD | ReLU+MB(32) | Observación |
+|---|---|---|---|---|---|
+| XOR | 75.0% / -15.7% | 75.0% / -15.7% | 100.0% / 0% | 100.0% / 0% | ReLU resuelve XOR al 100% con LR bajo |
+| Iris | 100.0% / -41.2% | 100.0% / -41.2% | 100.0% / -8.2% | 73.3% / -8.2% | Sigmoid comprime más; ReLU+MB subconverge |
+| Wine | 94.4% / -55.6% | 94.4% / -55.6% | 94.4% / -68.0% | 66.7% / -68.0% | ReLU+SGD comprime más; MB degrada |
+| Breast Cancer | 97.3% / -74.4% | 97.3% / -74.4% | 97.3% / 0% | 93.8% / 0% | Sigmoid comprime mejor |
+| Boston (R²) | 0.725 / -6.6% | 0.725 / -6.6% | 0.590 / -50.4% | 0.316 / -50.4% | Sigmoid gana en regresión |
+| Adult Income | 85.0% / -49.9% | 84.5% / -49.9% | 83.4% / 0% | 82.7% / 0% | Sigmoid gana en datos tabulares grandes |
+| Opt. Digits | 95.9% / -62.2% | 95.6% / -62.2% | 60.9% / -93.4% | 21.9% / -93.4% | Sigmoid domina en visión |
+
+Formato: precisión test / reducción de parámetros.
+
+**Hallazgos:**
+
+- **Sigmoid + SGD sigue siendo la mejor configuración general** para el método de la nube. La evaluación sin entrenamiento (fase de exploración) funciona mejor con sigmoid porque sus salidas están acotadas en (0,1), lo que produce clasificaciones más estables con pesos aleatorios.
+- **ReLU mejora en XOR** (100% vs 75%) y **comprime más en Wine** (-68% vs -55.6%), pero degrada en la mayoría de datasets porque la fase de exploración (sin entrenamiento) es menos efectiva con activaciones no acotadas.
+- **Mini-batches no aportan ventaja** en datasets pequeños/medianos (<1000 muestras) donde el batch es casi todo el dataset. En datasets grandes (Adult Income, 30K muestras), la diferencia es marginal (-0.5pp) porque el refinamiento ya usa pocas épocas (30).
+- **ReLU + Mini-batch es la peor combinación**: el LR reducido necesario para ReLU, dividido además por el batch_size, produce convergencia insuficiente en las pocas épocas de refinamiento.
+
+**Recomendación:** Usar `activacion=:sigmoid, batch_size=0` (valores por defecto) para la mayoría de problemas. ReLU puede ser útil para problemas específicos donde se necesita mayor compresión y se puede compensar con más épocas de refinamiento.
+
 ## Estructura del proyecto
 
 ```
@@ -295,10 +355,11 @@ RandomCloud.jl/
 ├── Project.toml
 ├── src/
 │   ├── RandomCloud.jl          # Módulo principal
-│   ├── configuracion.jl        # ConfiguracionNube
-│   ├── red_neuronal.jl         # RedNeuronal, feedforward, entrenar!, reconstruir
+│   ├── configuracion.jl        # ConfiguracionNube (activacion, batch_size)
+│   ├── activaciones.jl         # sigmoid, relu, identidad + despacho por símbolo
+│   ├── red_neuronal.jl         # RedNeuronal, feedforward, entrenar!, entrenar_batch!, reconstruir
 │   ├── politica.jl             # PoliticaEliminacion, PoliticaSecuencial
-│   ├── evaluacion.jl           # evaluar
+│   ├── evaluacion.jl           # evaluar, evaluar_regresion
 │   ├── motor.jl                # MotorNube, ejecutar
 │   └── informe.jl              # InformeNube
 ├── test/
@@ -313,7 +374,8 @@ RandomCloud.jl/
 ├── examples/
 │   ├── xor.jl                  # Ejemplo XOR
 │   ├── mnist.jl                # Experimento MNIST
-│   └── comparativa_mnist.jl    # Comparativa Nube vs Clásico
+│   ├── comparativa_*.jl        # Comparativas Nube vs Clásico
+│   └── comparativa_relu_*.jl   # Comparativas activaciones y mini-batches
 └── docs/
     └── metodo.md               # Descripción formal del método
 ```

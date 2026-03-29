@@ -10,8 +10,10 @@ export InformeNube
 export reconstruir
 export EntrenarBuffers
 export evaluar, evaluar_regresion
+export activaciones_por_capa
 
 include("configuracion.jl")
+include("activaciones.jl")
 include("red_neuronal.jl")
 include("politica.jl")
 include("evaluacion.jl")

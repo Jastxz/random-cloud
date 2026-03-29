@@ -18,12 +18,19 @@ function RedNeuronal(topologia::Vector{Int}, rng::AbstractRNG)
     RedNeuronal(topologia, pesos, biases)
 end
 
-@inline sigmoid(x::Float64) = 1.0 / (1.0 + exp(-x))
+# --- Feedforward ---
 
-@inline sigmoid_deriv(x::Float64) = x * (1.0 - x)
+function feedforward(red::RedNeuronal, entrada::AbstractVector{Float64},
+                     acts::Vector{Symbol})
+    x = entrada
+    @inbounds for i in 1:length(red.pesos)
+        act = acts[i]
+        x = [aplicar_activacion(v, act) for v in red.pesos[i] * x .+ red.biases[i]]
+    end
+    return x
+end
 
-# --- Feedforward con pre-alocación de buffers ---
-
+# Versión legacy sin activaciones (usa sigmoid en todas las capas)
 function feedforward(red::RedNeuronal, entrada::AbstractVector{Float64})
     x = entrada
     for i in 1:length(red.pesos)
@@ -33,7 +40,24 @@ function feedforward(red::RedNeuronal, entrada::AbstractVector{Float64})
 end
 
 # Versión in-place que reutiliza buffers pre-alocados (para el hot path)
-# buffers[i] debe tener longitud topologia[i+1]
+function feedforward!(red::RedNeuronal, entrada::AbstractVector{Float64},
+                      buffers::Vector{Vector{Float64}},
+                      acts::Vector{Symbol})
+    x = entrada
+    @inbounds for i in 1:length(red.pesos)
+        buf = buffers[i]
+        mul!(buf, red.pesos[i], x)
+        b = red.biases[i]
+        act = acts[i]
+        @simd for j in eachindex(buf)
+            buf[j] = aplicar_activacion(buf[j] + b[j], act)
+        end
+        x = buf
+    end
+    return x
+end
+
+# Versión legacy sin activaciones (sigmoid en todas las capas)
 function feedforward!(red::RedNeuronal, entrada::AbstractVector{Float64},
                       buffers::Vector{Vector{Float64}})
     x = entrada
@@ -51,11 +75,10 @@ end
 
 # --- Entrenamiento con pre-alocación ---
 
-# Estructura para buffers reutilizables durante entrenamiento
 struct EntrenarBuffers
     activaciones::Vector{Vector{Float64}}
     deltas::Vector{Vector{Float64}}
-    grad_pesos::Vector{Matrix{Float64}}  # buffer para outer product
+    grad_pesos::Vector{Matrix{Float64}}
 end
 
 function EntrenarBuffers(topologia::Vector{Int})
@@ -66,75 +89,153 @@ function EntrenarBuffers(topologia::Vector{Int})
     EntrenarBuffers(activaciones, deltas, grad_pesos)
 end
 
-
+# Versión legacy sin activaciones (sigmoid)
 function entrenar!(red::RedNeuronal, entrada::AbstractVector{Float64},
                    objetivo::AbstractVector{Float64}, lr::Float64)
-    # Forward pass almacenando activaciones por capa
     n_capas = length(red.pesos)
     activaciones = Vector{Vector{Float64}}(undef, n_capas + 1)
     activaciones[1] = collect(entrada)
     for i in 1:n_capas
         activaciones[i + 1] = sigmoid.(red.pesos[i] * activaciones[i] .+ red.biases[i])
     end
-
-    # Retropropagación
-    delta = (activaciones[end] .- objetivo) .* sigmoid_deriv.(activaciones[end])
-
+    delta = (activaciones[end] .- objetivo) .* sigmoid_deriv_from_output.(activaciones[end])
     for i in n_capas:-1:1
         red.pesos[i] .-= lr .* (delta * activaciones[i]')
         red.biases[i] .-= lr .* delta
         if i > 1
-            delta = (red.pesos[i]' * delta) .* sigmoid_deriv.(activaciones[i])
+            delta = (red.pesos[i]' * delta) .* sigmoid_deriv_from_output.(activaciones[i])
         end
     end
-
     return nothing
 end
 
-# Versión optimizada que reutiliza buffers pre-alocados
+# Versión optimizada con buffers (sigmoid)
 function entrenar!(red::RedNeuronal, entrada::AbstractVector{Float64},
                    objetivo::AbstractVector{Float64}, lr::Float64,
                    bufs::EntrenarBuffers)
     n_capas = length(red.pesos)
     acts = bufs.activaciones
-
-    # Forward pass: mul! evita alocación del resultado de W*x
     copyto!(acts[1], entrada)
     @inbounds for i in 1:n_capas
         buf = acts[i + 1]
         mul!(buf, red.pesos[i], acts[i])
         buf .= sigmoid.(buf .+ red.biases[i])
     end
-
-    # Retropropagación: reutilizar buffers de deltas y grad_pesos
     delta = bufs.deltas[n_capas]
-    delta .= (acts[n_capas + 1] .- objetivo) .* sigmoid_deriv.(acts[n_capas + 1])
-
+    delta .= (acts[n_capas + 1] .- objetivo) .* sigmoid_deriv_from_output.(acts[n_capas + 1])
     @inbounds for i in n_capas:-1:1
-        # Outer product in-place → grad_pesos[i]
         grad = bufs.grad_pesos[i]
         mul!(grad, delta, acts[i]')
-
-        # Actualizar pesos y biases (in-place con broadcasting fusionado)
         red.pesos[i] .-= lr .* grad
         red.biases[i] .-= lr .* delta
-
-        # Delta para la capa anterior
         if i > 1
             delta_prev = bufs.deltas[i - 1]
             mul!(delta_prev, red.pesos[i]', delta)
-            delta_prev .*= sigmoid_deriv.(acts[i])
+            delta_prev .*= sigmoid_deriv_from_output.(acts[i])
             delta = delta_prev
         end
     end
+    return nothing
+end
 
+# Versión optimizada con buffers Y activaciones configurables
+function entrenar!(red::RedNeuronal, entrada::AbstractVector{Float64},
+                   objetivo::AbstractVector{Float64}, lr::Float64,
+                   bufs::EntrenarBuffers, acts::Vector{Symbol})
+    n_capas = length(red.pesos)
+    as = bufs.activaciones
+    copyto!(as[1], entrada)
+    @inbounds for i in 1:n_capas
+        buf = as[i + 1]
+        mul!(buf, red.pesos[i], as[i])
+        act = acts[i]
+        b = red.biases[i]
+        @simd for j in eachindex(buf)
+            buf[j] = aplicar_activacion(buf[j] + b[j], act)
+        end
+    end
+    delta = bufs.deltas[n_capas]
+    act_last = acts[n_capas]
+    @inbounds @simd for j in eachindex(delta)
+        delta[j] = (as[n_capas + 1][j] - objetivo[j]) * aplicar_derivada(as[n_capas + 1][j], act_last)
+    end
+    @inbounds for i in n_capas:-1:1
+        grad = bufs.grad_pesos[i]
+        mul!(grad, delta, as[i]')
+        red.pesos[i] .-= lr .* grad
+        red.biases[i] .-= lr .* delta
+        if i > 1
+            delta_prev = bufs.deltas[i - 1]
+            mul!(delta_prev, red.pesos[i]', delta)
+            act_i = acts[i - 1]
+            @simd for j in eachindex(delta_prev)
+                delta_prev[j] *= aplicar_derivada(as[i][j], act_i)
+            end
+            delta = delta_prev
+        end
+    end
+    return nothing
+end
+
+# --- Mini-batch entrenamiento ---
+# Acumula gradientes sobre un batch y actualiza una vez
+function entrenar_batch!(red::RedNeuronal, entradas::Matrix{Float64},
+                         objetivos::Matrix{Float64}, indices::AbstractVector{Int},
+                         lr::Float64, bufs::EntrenarBuffers, acts::Vector{Symbol})
+    n_capas = length(red.pesos)
+    batch_size = length(indices)
+    batch_size == 0 && return nothing
+    lr_batch = lr / batch_size
+
+    # Acumuladores de gradientes (reutilizamos grad_pesos para el último, necesitamos acumuladores separados)
+    # Para simplicidad y 0-alloc: acumulamos directamente en pesos/biases con lr/batch_size
+    # Esto es equivalente a: grad_acum = sum(grads) / batch_size; pesos -= lr * grad_acum
+    # Reescrito como: pesos -= (lr/batch_size) * sum(grads)
+
+    @inbounds for idx in indices
+        as = bufs.activaciones
+        copyto!(as[1], @view(entradas[:, idx]))
+
+        # Forward
+        for i in 1:n_capas
+            buf = as[i + 1]
+            mul!(buf, red.pesos[i], as[i])
+            act = acts[i]
+            b = red.biases[i]
+            @simd for j in eachindex(buf)
+                buf[j] = aplicar_activacion(buf[j] + b[j], act)
+            end
+        end
+
+        # Backward
+        delta = bufs.deltas[n_capas]
+        act_last = acts[n_capas]
+        @simd for j in eachindex(delta)
+            delta[j] = (as[n_capas + 1][j] - objetivos[j, idx]) * aplicar_derivada(as[n_capas + 1][j], act_last)
+        end
+
+        for i in n_capas:-1:1
+            grad = bufs.grad_pesos[i]
+            mul!(grad, delta, as[i]')
+            red.pesos[i] .-= lr_batch .* grad
+            red.biases[i] .-= lr_batch .* delta
+            if i > 1
+                delta_prev = bufs.deltas[i - 1]
+                mul!(delta_prev, red.pesos[i]', delta)
+                act_i = acts[i - 1]
+                @simd for j in eachindex(delta_prev)
+                    delta_prev[j] *= aplicar_derivada(as[i][j], act_i)
+                end
+                delta = delta_prev
+            end
+        end
+    end
     return nothing
 end
 
 function reconstruir(red::RedNeuronal, nueva_topologia::Vector{Int})
     n_capas = length(nueva_topologia)
 
-    # Paso 1: Recortar pesos y biases a las dimensiones de la nueva topología
     nuevos_pesos = Matrix{Float64}[]
     nuevos_biases = Vector{Float64}[]
     for i in 1:(n_capas - 1)
@@ -144,7 +245,6 @@ function reconstruir(red::RedNeuronal, nueva_topologia::Vector{Int})
         push!(nuevos_biases, red.biases[i][1:filas])
     end
 
-    # Paso 2: Eliminar capas ocultas con 0 neuronas
     topo_filtrada = Int[nueva_topologia[1]]
     pesos_filtrados = Matrix{Float64}[]
     biases_filtrados = Vector{Float64}[]
