@@ -145,6 +145,24 @@ Misma estructura que MNIST (784 entradas, 10 clases) pero más difícil. Topolog
 - Con [3072, 64, 32, 10] la nube casi iguala al clásico (41.8% vs 42.5%) sin reducir topología.
 - El overhead de exploración es significativo en problemas de alta dimensionalidad (~2.5x más lento que el clásico).
 
+### Ionosphere (señales de radar, 2 clases)
+
+351 muestras, 34 features, 2 clases (good/bad radar returns). Split 80/20 estratificado (281 train, 70 test). 200 épocas, LR=0.1. Nube: 50 redes, umbral=0.6, eliminar=1.
+
+| Topología inicial | Params | Clásico (test) | Nube (test) | Topología final | Reducción params |
+|---|---|---|---|---|---|
+| [34, 8, 2] | 298 | 87.1% | 85.7% | [34, 3, 2] | -62.1% |
+| [34, 16, 2] | 594 | 94.3% | 90.0% | [34, 3, 2] | -81.0% |
+| [34, 16, 8, 2] | 714 | 91.4% | 90.0% | [34, 16, 4, 2] | -10.6% |
+| [34, 32, 16, 2] | 1,682 | 90.0% | 88.6% | [34, 32, 5, 2] | -22.9% |
+| [34, 32, 16, 8, 2] | 1,802 | 91.4% | 90.0% | [34, 32, 16, 8, 2] | 0% |
+
+**Observaciones:**
+- La nube sacrifica 1-4pp de precisión a cambio de reducciones masivas de parámetros (hasta 81%).
+- Con [34, 16, 2] la nube descubre que solo 3 neuronas ocultas bastan (594→113 parámetros, -81%).
+- Ionosphere tiene un ratio features/muestras alto (34/351), lo que dificulta la búsqueda sin entrenamiento.
+- El trade-off precisión vs compresión es claro: la nube prioriza arquitecturas mínimas.
+
 ### Adult Income (predicción de ingresos, 2 clases)
 
 Problema real: predecir si una persona gana >50K$/año. 30,162 train, 15,060 test, 104 features (6 numéricas + one-hot categóricas), 2 clases. Desbalanceo moderado (24.9% >50K). 30 épocas, LR=0.1. Nube: 50 redes, umbral=0.6, eliminar=2.
