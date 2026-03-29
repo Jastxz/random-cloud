@@ -347,6 +347,30 @@ Todos los métodos usan las mismas épocas totales de entrenamiento para compara
 - En datasets fáciles (Iris, Wine, Breast Cancer), los tres métodos empatan — la topología objetivo es suficientemente expresiva para que cualquier método de poda funcione.
 - La ventaja clave de la nube: no necesita entrenar la red completa antes de podar. Magnitude y random pruning requieren entrenar primero (coste O(épocas × muestras × parámetros_completos)) y luego fine-tune. La nube evalúa sin entrenar (coste O(nube × muestras × parámetros)) y solo entrena la red reducida.
 
+### Escalabilidad: baselines en MNIST (784 dimensiones)
+
+Para evaluar cómo se comporta el método con dimensionalidad alta, comparamos en MNIST (784 entradas, 10 clases). Topología [784, 32, 16, 10] (25,818 params). 30 épocas, LR=0.1. Nube: 100 redes, umbral=0.15, eliminar=2. Test fijo: 10,000 imágenes.
+
+| N muestras | Método | Acc (test) | F1 | AUC | Topología | Reducción |
+|---|---|---|---|---|---|---|
+| 1,000 | Clásico | 84.6% | 0.843 | 0.974 | [784,32,16,10] | — |
+| | Magnitude | 77.0% | 0.764 | 0.940 | [784,32,4,10] | -2.0% |
+| | Random (×5) | 77.3% | 0.761 | 0.943 | [784,32,4,10] | -2.0% |
+| | Nube | 59.8% | 0.504 | 0.879 | [784,32,4,10] | -2.0% |
+| 5,000 | Clásico | 90.7% | 0.906 | 0.986 | [784,32,16,10] | — |
+| | Magnitude | 87.5% | 0.874 | 0.971 | [784,32,4,10] | -2.0% |
+| | Random (×5) | 86.9% | 0.867 | 0.969 | [784,32,4,10] | -2.0% |
+| | Nube | 86.9% | 0.864 | 0.971 | [784,32,4,10] | -2.0% |
+
+**Hallazgos de escalabilidad:**
+- Con 1K muestras y 784 dimensiones, la nube pierde claramente: -17pp vs magnitude pruning. Con tan pocos datos en dimensión alta, la evaluación sin entrenamiento no tiene suficiente señal para seleccionar buenas redes.
+- Con 5K muestras, la brecha se cierra drásticamente: la nube empata con random pruning (86.9%) y queda a solo 0.6pp de magnitude pruning. El AUC es idéntico (0.971).
+- La tendencia es clara: a más datos, la nube converge hacia los baselines. Con 10K+ muestras (extrapolando de los resultados previos del README), la nube alcanza 90.2% test vs 92.5% del clásico.
+- La reducción de parámetros en MNIST es modesta (-2.0%) porque la capa 784→32 domina con 25,088 parámetros. El método brilla más cuando las capas ocultas son proporcionalmente grandes respecto a la entrada.
+- El coste computacional de la nube (84s vs 27s del clásico con 5K) refleja el overhead de exploración (100 redes × reducciones). Magnitude pruning necesita 54s (train + prune + fine-tune = 2× épocas).
+
+**Conclusión sobre escalabilidad:** El método de la nube es competitivo con los baselines de pruning cuando hay suficientes datos (≥5K muestras para 784 dimensiones). Con datos escasos en dimensión alta, los métodos post-training (que aprovechan información aprendida) tienen ventaja. El sweet spot del método son datasets pequeños/medianos con dimensionalidad moderada, donde la exploración sin entrenamiento tiene señal suficiente y el ahorro de no entrenar la red completa es significativo.
+
 ## Rendimiento
 
 El motor paraleliza automáticamente la fase de exploración cuando Julia se lanza con múltiples threads:
