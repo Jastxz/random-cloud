@@ -371,6 +371,109 @@ Para evaluar cómo se comporta el método con dimensionalidad alta, comparamos e
 
 **Conclusión sobre escalabilidad:** El método de la nube es competitivo con los baselines de pruning cuando hay suficientes datos (≥5K muestras para 784 dimensiones). Con datos escasos en dimensión alta, los métodos post-training (que aprovechan información aprendida) tienen ventaja. El sweet spot del método son datasets pequeños/medianos con dimensionalidad moderada, donde la exploración sin entrenamiento tiene señal suficiente y el ahorro de no entrenar la red completa es significativo.
 
+### Significancia estadística (10 semillas)
+
+Para validar que los resultados no son artefactos de una semilla particular, cada método se ejecutó con 10 semillas distintas (42, 123, 256, 314, 501, 667, 789, 888, 1024, 1337). Se reporta media ± desviación estándar y Wilcoxon signed-rank test (p<0.05 = significativo).
+
+| Dataset | Método | Acc (mean±std) | F1 (mean±std) | p-value vs Nube (Acc) |
+|---|---|---|---|---|
+| Breast Cancer | Clásico | 97.3±0.0% | 0.971±0.000 | — |
+| (-74.4%) | Magnitude | 97.3±0.0% | 0.971±0.000 | p=1.000 |
+| | Random | 97.3±0.0% | 0.971±0.000 | p=1.000 |
+| | Nube | 97.3±0.0% | 0.971±0.000 | — |
+| Sonar | Clásico | 78.3±4.7% | 0.779±0.047 | — |
+| (-87.2%) | Magnitude | 72.4±3.5% | 0.718±0.036 | p=0.017 ✓ |
+| | Random | 69.5±2.9% | 0.684±0.033 | p=0.005 ✓ |
+| | Nube | 77.3±2.6% | 0.769±0.026 | — |
+| Ionosphere | Clásico | 90.3±2.9% | 0.887±0.035 | — |
+| (-81.0%) | Magnitude | 89.9±3.2% | 0.883±0.039 | p=0.721 |
+| | Random | 88.9±3.1% | 0.871±0.037 | p=0.721 |
+| | Nube | 88.9±3.4% | 0.870±0.042 | — |
+| Adult Income | Clásico | 84.5±0.1% | 0.786±0.003 | — |
+| (-49.9%) | Magnitude | 84.7±0.1% | 0.787±0.003 | p=0.028 ✓ |
+| | Random | 84.7±0.3% | 0.788±0.003 | p=0.139 |
+| | Nube | 84.5±0.2% | 0.786±0.003 | — |
+| Wine | Clásico | 94.4±0.0% | 0.944±0.000 | — |
+| (-55.6%) | Magnitude | 94.4±0.0% | 0.944±0.000 | p=0.317 |
+| | Random | 94.7±0.9% | 0.947±0.009 | p=0.180 |
+| | Nube | 94.2±0.9% | 0.941±0.009 | — |
+| Opt. Digits | Clásico | 98.1±0.2% | 0.981±0.002 | — |
+| (-62.2%) | Magnitude | 97.5±0.2% | 0.975±0.002 | p=0.203 |
+| | Random | 97.2±0.4% | 0.972±0.004 | p=0.959 |
+| | Nube | 96.6±2.3% | 0.966±0.023 | — |
+
+**Hallazgos:**
+- En Sonar, la nube supera significativamente a ambos baselines (p=0.017 vs magnitude, p=0.005 vs random). Con 87% de compresión, la nube obtiene +4.9pp sobre magnitude y +7.8pp sobre random de media, con menor varianza (std=2.6% vs 3.5% y 2.9%).
+- En Breast Cancer, los 4 métodos obtienen exactamente el mismo resultado en las 10 semillas (97.3%). El problema es tan "fácil" con esta topología que la semilla no importa.
+- En Ionosphere, la nube empata estadísticamente con ambos baselines (p>0.7). Con 81% de compresión, los tres métodos podados rinden similar (~89%), todos cerca del clásico (90.3%).
+- En Adult Income, magnitude pruning supera ligeramente a la nube en accuracy (p=0.028), pero en F1 no hay diferencia significativa (p=0.508). Con 30K+ muestras, los métodos post-training tienen una ligera ventaja porque aprovechan información aprendida, pero la diferencia es de solo 0.2pp.
+- En Wine, los 4 métodos empatan estadísticamente. La nube tiene una ligera caída en una semilla (91.7% en seed 888), pero la media (94.2%) es indistinguible de los baselines.
+- En Optical Digits, la nube empata estadísticamente con random pruning (p=0.959) y con magnitude pruning (p=0.203). La nube tiene mayor varianza (std=2.3%) por un outlier en seed 123 (90.5%), pero en 9 de 10 seeds rinde >96%.
+- La nube nunca pierde significativamente contra random pruning en ningún dataset. Contra magnitude pruning, solo pierde en Adult Income (y solo en accuracy, no en F1).
+
+### Sensibilidad a hiperparámetros
+
+Se varió un hiperparámetro a la vez (los demás fijos) en 3 datasets representativos, con 3 seeds por configuración.
+
+**Tamaño de nube** (10, 25, 50, 100, 200):
+
+| Dataset | Nube=10 | Nube=25 | Nube=50 | Nube=100 | Nube=200 |
+|---|---|---|---|---|---|
+| Sonar | 76.4% / 0% | 77.2% / 0% | 77.2% / -87% | 78.0% / -87% | 76.4% / -75% |
+| Ionosphere | 86.2% / -87% | 90.5% / 0% | 91.4% / -81% | 89.5% / -62% | 90.0% / -62% |
+| Wine | 87.0% / -68% | 94.4% / -68% | 94.4% / -56% | 94.4% / -56% | 88.0% / -56% |
+
+Formato: Acc test / reducción de parámetros. El método es robusto a partir de nube≥25. Con nube=10 la exploración es insuficiente (menos candidatos). Con nube=200 no mejora y puede empeorar ligeramente (más ruido en la selección). El sweet spot es 50-100.
+
+**Umbral de acierto** (0.3, 0.4, 0.5, 0.6, 0.7):
+
+| Dataset | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 |
+|---|---|---|---|---|---|
+| Sonar | 77.2% ✓ | 77.2% ✓ | 77.2% ✓ | 77.2% ✓ | FAIL |
+| Ionosphere | 91.4% ✓ | 91.4% ✓ | 91.4% ✓ | 91.4% ✓ | 91.4% ✓ |
+| Wine | 94.4% ✓ | 94.4% ✓ | 94.4% ✓ | 94.4% ✓ | 94.4% (1/3) |
+
+El método es muy robusto al umbral en el rango 0.3-0.6. Solo falla cuando el umbral es demasiado alto para que alguna red aleatoria lo supere (Sonar con 0.7). Recomendación: usar umbral entre 0.4 y 0.6.
+
+**Neuronas a eliminar** (1, 2, 4):
+
+| Dataset | Elim=1 | Elim=2 | Elim=4 |
+|---|---|---|---|
+| Sonar | 77.2% / -87% | 75.6% / -50% | 75.6% / -50% |
+| Ionosphere | 91.4% / -81% | 89.5% / -87% | 90.0% / 0% |
+| Wine | 94.4% / -56% | 94.4% / -37% | 94.4% / -50% |
+
+Elim=1 produce la mayor compresión en Sonar e Ionosphere porque explora topologías más granulares. Elim=2 y 4 saltan topologías intermedias que podrían ser óptimas. En Wine la accuracy es idéntica pero la compresión varía. Recomendación: usar elim=1 para máxima compresión, elim=2 para velocidad.
+
+### Coste computacional
+
+Tiempo total y desglose por fase para cada método (mediana de 3 runs, 8 threads).
+
+| Dataset | Clásico | Magnitude | Random | Nube | Ratio Nube/Clásico |
+|---|---|---|---|---|---|
+| Sonar (167 train) | 234ms | 351ms (1.5×) | 349ms (1.5×) | 158ms (0.67×) | 0.67× |
+| Ionosphere (281 train) | 421ms | 676ms (1.6×) | 660ms (1.6×) | 341ms (0.81×) | 0.81× |
+| Breast Cancer (456 train) | 241ms | 398ms (1.7×) | 425ms (1.8×) | 227ms (0.94×) | 0.94× |
+| Opt. Digits (3823 train) | 7.9s | 11.5s (1.5×) | 11.5s (1.5×) | 6.3s (0.79×) | 0.79× |
+| Adult Income (30162 train) | 13.1s | 21.7s (1.7×) | 21.7s (1.7×) | 15.4s (1.17×) | 1.17× |
+
+Desglose de la nube (exploración + refinamiento):
+
+| Dataset | Exploración | Refinamiento | % exploración |
+|---|---|---|---|
+| Sonar | 43ms | 115ms | 27% |
+| Ionosphere | 86ms | 255ms | 25% |
+| Breast Cancer | 57ms | 170ms | 25% |
+| Opt. Digits | 2.4s | 3.8s | 39% |
+| Adult Income | 6.7s | 8.7s | 44% |
+
+**Hallazgos:**
+- La nube es más rápida que el clásico en 4 de 5 datasets (0.67×-0.94×). Solo en Adult Income (30K muestras) es ligeramente más lenta (1.17×), porque la exploración con 50 redes × muchas reducciones sobre 30K muestras tiene overhead.
+- Magnitude y random pruning son siempre 1.5-1.8× más lentos que el clásico porque necesitan entrenar la red completa Y luego fine-tune la red podada (doble entrenamiento).
+- La nube es siempre más rápida que ambos baselines de pruning (0.67× vs 1.5× en Sonar, 0.79× vs 1.5× en Digits).
+- La exploración (feedforward sin backprop) consume solo 25-44% del tiempo total. El refinamiento (backprop sobre la red reducida) domina. A medida que el dataset crece, la exploración pesa más (27% en Sonar → 44% en Adult).
+- El coste de pruning en sí (seleccionar neuronas) es despreciable (<1ms) en todos los casos. El coste real está en el entrenamiento.
+
 ## Rendimiento
 
 El motor paraleliza automáticamente la fase de exploración cuando Julia se lanza con múltiples threads:
