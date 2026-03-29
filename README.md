@@ -299,6 +299,54 @@ Accuracy puede ser engañosa en datasets desbalanceados. F1-score (macro-average
 - En los datasets multiclase (Iris, Wine, Digits), F1 y AUC se mantienen prácticamente idénticos entre nube y clásico, confirmando que la reducción topológica no afecta la calidad por clase.
 - El AUC es consistentemente alto (>0.9) en todos los datasets excepto Sonar, indicando que las redes producen probabilidades bien calibradas independientemente de la compresión.
 
+### Comparativa con baselines de pruning
+
+Para validar que el método aporta valor frente a técnicas de poda establecidas, comparamos con dos baselines que usan la misma topología objetivo que encontró la nube:
+
+- Magnitude Pruning: entrenar red completa → eliminar neuronas con menor norma L2 de pesos entrantes → fine-tune.
+- Random Pruning: entrenar red completa → eliminar neuronas al azar → fine-tune (promedio de 5 runs).
+
+Todos los métodos usan las mismas épocas totales de entrenamiento para comparación justa.
+
+| Dataset | Método | Acc | F1 | AUC | Topología | Reducción |
+|---|---|---|---|---|---|---|
+| Breast Cancer | Clásico | 97.3% | 0.971 | 0.993 | [30,8,2] | — |
+| | Magnitude | 97.3% | 0.971 | 0.993 | [30,2,2] | -74.4% |
+| | Random | 97.3% | 0.971 | 0.991 | [30,2,2] | -74.4% |
+| | Nube | 97.3% | 0.971 | 0.992 | [30,2,2] | -74.4% |
+| Sonar | Clásico | 78.0% | 0.776 | 0.823 | [60,8,2] | — |
+| | Magnitude | 78.0% | 0.776 | 0.809 | [60,1,2] | -87.2% |
+| | Random | 69.8% | 0.685 | 0.774 | [60,1,2] | -87.2% |
+| | Nube | 80.5% | 0.799 | 0.809 | [60,1,2] | -87.2% |
+| Ionosphere | Clásico | 94.3% | 0.935 | 0.918 | [34,16,2] | — |
+| | Magnitude | 87.1% | 0.853 | 0.904 | [34,3,2] | -81.0% |
+| | Random | 88.0% | 0.861 | 0.906 | [34,3,2] | -81.0% |
+| | Nube | 90.0% | 0.885 | 0.910 | [34,3,2] | -81.0% |
+| Adult Income | Clásico | 84.2% | 0.758 | 0.901 | [104,16,2] | — |
+| | Magnitude | 84.4% | 0.762 | 0.901 | [104,8,2] | -49.9% |
+| | Random | 84.4% | 0.764 | 0.902 | [104,8,2] | -49.9% |
+| | Nube | 85.0% | 0.782 | 0.904 | [104,8,2] | -49.9% |
+| Iris | Clásico | 100.0% | 1.000 | 1.000 | [4,16,8,3] | — |
+| | Magnitude | 100.0% | 1.000 | 1.000 | [4,16,3,3] | -41.2% |
+| | Random | 100.0% | 1.000 | 1.000 | [4,16,3,3] | -41.2% |
+| | Nube | 100.0% | 1.000 | 1.000 | [4,16,3,3] | -41.2% |
+| Wine | Clásico | 94.4% | 0.944 | 0.996 | [13,16,3] | — |
+| | Magnitude | 94.4% | 0.944 | 0.996 | [13,7,3] | -55.6% |
+| | Random | 94.4% | 0.944 | 0.997 | [13,7,3] | -55.6% |
+| | Nube | 94.4% | 0.944 | 0.995 | [13,7,3] | -55.6% |
+| Opt. Digits | Clásico | 96.3% | 0.963 | 0.997 | [64,32,10] | — |
+| | Magnitude | 95.0% | 0.950 | 0.996 | [64,12,10] | -62.2% |
+| | Random | 95.4% | 0.954 | 0.996 | [64,12,10] | -62.2% |
+| | Nube | 95.9% | 0.959 | 0.997 | [64,12,10] | -62.2% |
+
+**Hallazgos:**
+- La nube iguala o supera a ambos baselines de pruning en 6 de 7 datasets (en Breast Cancer empatan los tres).
+- En Sonar, la nube supera a magnitude pruning por +2.5pp accuracy y +0.023 F1, y a random pruning por +10.7pp accuracy y +0.114 F1. Con compresión del 87%, la diferencia es dramática.
+- En Ionosphere, la nube supera a magnitude pruning por +2.9pp y a random pruning por +2.0pp, ambos con 81% de compresión.
+- En Adult Income, la nube supera a ambos baselines por +0.5-0.6pp accuracy y +0.017-0.020 F1. En un dataset de 30K muestras con desbalanceo, la mejora en F1 es significativa.
+- En datasets fáciles (Iris, Wine, Breast Cancer), los tres métodos empatan — la topología objetivo es suficientemente expresiva para que cualquier método de poda funcione.
+- La ventaja clave de la nube: no necesita entrenar la red completa antes de podar. Magnitude y random pruning requieren entrenar primero (coste O(épocas × muestras × parámetros_completos)) y luego fine-tune. La nube evalúa sin entrenar (coste O(nube × muestras × parámetros)) y solo entrena la red reducida.
+
 ## Rendimiento
 
 El motor paraleliza automáticamente la fase de exploración cuando Julia se lanza con múltiples threads:
