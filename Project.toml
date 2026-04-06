@@ -5,6 +5,7 @@ authors = ["RandomCloud Contributors"]
 
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MLDatasets = "eb30cadb-4394-5ae3-aed4-317e484a6458"
@@ -13,6 +14,7 @@ SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 
 [compat]
 BenchmarkTools = "1.6.3"
+CairoMakie = "0.15.9"
 DataFrames = "1.8.1"
 MLDatasets = "0.7.21"
 SpecialFunctions = "2.7.2"

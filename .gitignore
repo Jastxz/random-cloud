@@ -31,3 +31,4 @@ JuliaLocalPreferences.toml
 .kiro
 SuppositionDB/
 .cache*
+paper/
