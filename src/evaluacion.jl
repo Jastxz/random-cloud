@@ -244,3 +244,57 @@ function _calcular_auc(scores::Vector{Float64}, labels::Vector{Bool})
 
     return auc / (n_pos * n_neg)
 end
+
+
+# --- Evaluación batched de la nube completa ---
+
+"""
+    evaluar_nube_batch(nube, entradas, objetivos, acts) → Vector{Float64}
+
+Evaluate all N networks in the cloud using batched feedforward per network.
+Loops over networks, but each network's feedforward is batched over all samples.
+Returns a vector of N accuracy values (proportion of correct argmax predictions).
+
+Accepts `AbstractMatrix{T}` for CPU/GPU compatibility. When T differs from Float64
+(e.g., Float32 on GPU), network weights are converted to type T before computation.
+"""
+function evaluar_nube_batch(
+    nube::Vector{RedNeuronal},
+    entradas::AbstractMatrix{T},
+    objetivos::AbstractMatrix{T},
+    acts::Vector{Symbol}
+) where T<:AbstractFloat
+    N = length(nube)
+    n_muestras = size(entradas, 2)
+    resultados = Vector{Float64}(undef, N)
+
+    @inbounds for i in 1:N
+        # Convert weights to type T for CPU/GPU compatibility
+        pesos_T = [T.(nube[i].pesos[l]) for l in eachindex(nube[i].pesos)]
+        biases_T = [T.(nube[i].biases[l]) for l in eachindex(nube[i].biases)]
+
+        # Batched feedforward for all samples at once
+        salida = feedforward_batch(pesos_T, biases_T, entradas, acts)
+
+        # Compute accuracy: compare argmax of output vs target per sample
+        aciertos = 0
+        for k in 1:n_muestras
+            if argmax(@view(salida[:, k])) == argmax(@view(objetivos[:, k]))
+                aciertos += 1
+            end
+        end
+        resultados[i] = aciertos / n_muestras
+    end
+
+    return resultados
+end
+
+# Convenience method: defaults to sigmoid activation on every layer
+function evaluar_nube_batch(
+    nube::Vector{RedNeuronal},
+    entradas::AbstractMatrix{T},
+    objetivos::AbstractMatrix{T}
+) where T<:AbstractFloat
+    acts = activaciones_por_capa(length(nube[1].pesos), :sigmoid)
+    return evaluar_nube_batch(nube, entradas, objetivos, acts)
+end

@@ -172,3 +172,44 @@ end
         return true
     end
 end
+
+# Feature: gpu-batched-cloud, Property 8: End-to-end ejecutar equivalence
+# **Validates: Requirements 5.4**
+
+@testset "PBT Propiedad 8: End-to-end ejecutar equivalence (batched vs legacy)" begin
+
+    seed_gen = Data.Integers(1, 10000)
+    tamano_gen = Data.Integers(2, 5)
+    epocas_gen = Data.Integers(10, 50)
+
+    @check max_examples=100 function prop_ejecutar_equivalence(
+        semilla = seed_gen,
+        tamano = tamano_gen,
+        epocas = epocas_gen
+    )
+        config = ConfiguracionNube(
+            tamano_nube = tamano,
+            topologia_inicial = [2, 4, 2],
+            umbral_acierto = 0.5,
+            epocas_refinamiento = epocas,
+            tasa_aprendizaje = 0.1,
+            semilla = semilla
+        )
+
+        # Legacy path
+        motor_legacy = MotorNube(config, XOR_ENTRADAS, XOR_OBJETIVOS)
+        informe_legacy = RandomCloud._ejecutar_legacy(motor_legacy)
+
+        # Batched path (new MotorNube with same config to get same initial cloud)
+        motor_batched = MotorNube(config, XOR_ENTRADAS, XOR_OBJETIVOS)
+        informe_batched = RandomCloud._ejecutar_batched(motor_batched)
+
+        # Precision within ±0.01
+        abs(informe_legacy.precision - informe_batched.precision) <= 0.01 || return false
+
+        # exitoso must be identical
+        informe_legacy.exitoso == informe_batched.exitoso || return false
+
+        return true
+    end
+end

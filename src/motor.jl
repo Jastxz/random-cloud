@@ -83,7 +83,30 @@ function _explorar_red(red::RedNeuronal, entradas::Matrix{Float64},
     return ResultadoExploracion(mejor_red, mejor_precision, evaluaciones, reducciones)
 end
 
+# --- Dispatch helpers ---
+
+_usar_batched(config::ConfiguracionNube) = true
+
+function _ejecutar_gpu(motor::MotorNube)
+    error("GPU execution requires CUDA.jl extension. This should not be reached.")
+end
+
+# --- Main dispatch ---
+
 function ejecutar(motor::MotorNube)
+    config = motor.config
+    if config.gpu
+        return _ejecutar_gpu(motor)
+    elseif _usar_batched(config)
+        return _ejecutar_batched(motor)
+    else
+        return _ejecutar_legacy(motor)
+    end
+end
+
+# --- Legacy path: exact copy of original ejecutar logic ---
+
+function _ejecutar_legacy(motor::MotorNube)
     config = motor.config
     entradas = motor.entradas
     objetivos = motor.objetivos
@@ -194,6 +217,143 @@ function ejecutar(motor::MotorNube)
         else
             mejor_precision = fn_eval(mejor_red, entradas, objetivos)
         end
+        es_exitoso = mejor_precision >= config.umbral_acierto
+
+        t_fin = time_ns()
+        tiempo_ms = (t_fin - t_inicio) / 1_000_000.0
+
+        if es_exitoso
+            return InformeNube(mejor_red, mejor_precision, copy(mejor_red.topologia),
+                               total_evaluaciones, total_reducciones, tiempo_ms, true)
+        else
+            return InformeNube(nothing, mejor_precision, nothing,
+                               total_evaluaciones, total_reducciones, tiempo_ms, false)
+        end
+    end
+
+    t_fin = time_ns()
+    tiempo_ms = (t_fin - t_inicio) / 1_000_000.0
+    return InformeNube(nothing, mejor_precision, nothing,
+                       total_evaluaciones, total_reducciones, tiempo_ms, false)
+end
+
+# --- Batched CPU path: same algorithm, uses batched operations for refinement ---
+
+function _ejecutar_batched(motor::MotorNube)
+    config = motor.config
+    entradas = motor.entradas
+    objetivos = motor.objetivos
+    fn_eval = motor.fn_evaluar
+    use_acts = config.activacion !== :sigmoid
+
+    rng = MersenneTwister(config.semilla)
+    t_inicio = time_ns()
+
+    nube = [RedNeuronal(config.topologia_inicial, rng) for _ in 1:config.tamano_nube]
+
+    # Calcular activaciones base
+    n_capas_inicial = length(config.topologia_inicial) - 1
+    acts_base = activaciones_por_capa(n_capas_inicial, config.activacion)
+
+    N = config.tamano_nube
+    resultados = Vector{ResultadoExploracion}(undef, N)
+
+    # Exploration phase: per-network evaluation (topology changes per network)
+    # Same as legacy — topology reduction means each network may have different shapes
+    if use_acts
+        if Threads.nthreads() > 1
+            Threads.@threads for j in 1:N
+                resultados[j] = _explorar_red(nube[j], entradas, objetivos,
+                                              config.umbral_acierto, config.neuronas_eliminar,
+                                              fn_eval, acts_base)
+            end
+        else
+            for j in 1:N
+                resultados[j] = _explorar_red(nube[j], entradas, objetivos,
+                                              config.umbral_acierto, config.neuronas_eliminar,
+                                              fn_eval, acts_base)
+            end
+        end
+    else
+        if Threads.nthreads() > 1
+            Threads.@threads for j in 1:N
+                resultados[j] = _explorar_red(nube[j], entradas, objetivos,
+                                              config.umbral_acierto, config.neuronas_eliminar, fn_eval)
+            end
+        else
+            for j in 1:N
+                resultados[j] = _explorar_red(nube[j], entradas, objetivos,
+                                              config.umbral_acierto, config.neuronas_eliminar, fn_eval)
+            end
+        end
+    end
+
+    mejor_red = nothing
+    mejor_precision = 0.0
+    total_evaluaciones = 0
+    total_reducciones = 0
+
+    for res in resultados
+        total_evaluaciones += res.evaluaciones
+        total_reducciones += res.reducciones
+        if res.mejor_red !== nothing && res.mejor_precision > mejor_precision
+            mejor_red = res.mejor_red
+            mejor_precision = res.mejor_precision
+        end
+    end
+
+    # Refinement phase: use entrenar_batch_matmul! for the best network
+    if mejor_red !== nothing
+        n_muestras = size(entradas, 2)
+        acts_red = activaciones_por_capa(length(mejor_red.pesos), config.activacion)
+
+        # Extract weights/biases as mutable vectors for entrenar_batch_matmul!
+        pesos = mejor_red.pesos
+        biases = mejor_red.biases
+
+        lr = config.tasa_aprendizaje
+
+        if config.batch_size > 0 && n_muestras > config.batch_size
+            # Mini-batch training using entrenar_batch_matmul!
+            indices = collect(1:n_muestras)
+            rng_shuffle = MersenneTwister(config.semilla + 1)
+            for _ in 1:config.epocas_refinamiento
+                shuffle!(rng_shuffle, indices)
+                @inbounds for start in 1:config.batch_size:n_muestras
+                    fin = min(start + config.batch_size - 1, n_muestras)
+                    batch_idx = indices[start:fin]
+                    X_batch = entradas[:, batch_idx]
+                    Y_batch = objetivos[:, batch_idx]
+                    entrenar_batch_matmul!(pesos, biases, X_batch, Y_batch, lr, acts_red)
+                end
+            end
+        else
+            # Sample-by-sample (matches legacy behavior exactly)
+            bufs = EntrenarBuffers(mejor_red.topologia)
+            if use_acts
+                for _ in 1:config.epocas_refinamiento
+                    @inbounds for k in 1:n_muestras
+                        entrenar!(mejor_red, @view(entradas[:, k]), @view(objetivos[:, k]),
+                                  config.tasa_aprendizaje, bufs, acts_red)
+                    end
+                end
+            else
+                for _ in 1:config.epocas_refinamiento
+                    @inbounds for k in 1:n_muestras
+                        entrenar!(mejor_red, @view(entradas[:, k]), @view(objetivos[:, k]),
+                                  config.tasa_aprendizaje, bufs)
+                    end
+                end
+            end
+        end
+
+        # Re-evaluate using fn_eval (same as legacy)
+        if use_acts
+            mejor_precision = fn_eval(mejor_red, entradas, objetivos; acts=acts_red)
+        else
+            mejor_precision = fn_eval(mejor_red, entradas, objetivos)
+        end
+
         es_exitoso = mejor_precision >= config.umbral_acierto
 
         t_fin = time_ns()

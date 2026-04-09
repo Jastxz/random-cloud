@@ -8,4 +8,11 @@ struct InformeNube
     total_reducciones::Int
     tiempo_ejecucion_ms::Float64
     exitoso::Bool
+    gpu_tiempo_ms::Float64
+    pico_vram_mb::Float64
+end
+
+# Backward-compatible constructor: accepts original 7 arguments, defaults new fields to 0.0
+function InformeNube(mejor_red, precision, topologia_final, total_redes_evaluadas, total_reducciones, tiempo_ejecucion_ms, exitoso)
+    InformeNube(mejor_red, precision, topologia_final, total_redes_evaluadas, total_reducciones, tiempo_ejecucion_ms, exitoso, 0.0, 0.0)
 end

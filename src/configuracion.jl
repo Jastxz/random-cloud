@@ -12,6 +12,7 @@ struct ConfiguracionNube
     semilla::Int
     activacion::Symbol
     batch_size::Int
+    gpu::Bool
 
     function ConfiguracionNube(;
         tamano_nube::Int = 10,
@@ -22,7 +23,8 @@ struct ConfiguracionNube
         tasa_aprendizaje::Float64 = 0.1,
         semilla::Int = 42,
         activacion::Symbol = :sigmoid,
-        batch_size::Int = 0
+        batch_size::Int = 0,
+        gpu::Bool = false
     )
         tamano_nube < 1 && throw(ArgumentError(
             "tamano_nube debe ser ≥ 1, se recibió: $tamano_nube"))
@@ -47,8 +49,11 @@ struct ConfiguracionNube
         batch_size < 0 && throw(ArgumentError(
             "batch_size debe ser ≥ 0 (0 = sample-by-sample), se recibió: $batch_size"))
 
+        gpu && !GPU_AVAILABLE[] && throw(ArgumentError(
+            "CUDA.jl must be added to use gpu=true. Run: ] add CUDA"))
+
         new(tamano_nube, copy(topologia_inicial), umbral_acierto,
             neuronas_eliminar, epocas_refinamiento, tasa_aprendizaje, semilla,
-            activacion, batch_size)
+            activacion, batch_size, gpu)
     end
 end

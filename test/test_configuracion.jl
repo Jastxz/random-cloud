@@ -115,3 +115,111 @@ using Supposition: Data
         config.topologia_inicial == topo_original && config.topologia_inicial[2] == topo_original[2]
     end
 end
+
+# Feature: gpu-batched-cloud, Property 7: ConfiguracionNube backward compatibility
+# **Validates: Requirements 5.1, 5.2**
+@testset "PBT Property 7: ConfiguracionNube backward compatibility" begin
+
+    hidden_gen = Data.Vectors(Data.Integers(1, 30); min_size=1, max_size=3)
+    topo_gen = @composed function gen_topo(
+        n_in = Data.Integers(1, 20),
+        hidden = hidden_gen,
+        n_out = Data.Integers(1, 10)
+    )
+        return vcat([n_in], hidden, [n_out])
+    end
+
+    activacion_gen = Data.SampledFrom([:sigmoid, :relu, :identidad])
+
+    umbral_gen = filter(x -> !isnan(x) && !isinf(x), Data.Floats{Float64}(minimum=0.0, maximum=1.0))
+    lr_gen = filter(x -> !isnan(x) && !isinf(x), Data.Floats{Float64}(minimum=0.001, maximum=1.0))
+
+    @check max_examples=100 function prop_backward_compat(
+        tamano_nube = Data.Integers(1, 50),
+        topologia = topo_gen,
+        umbral = umbral_gen,
+        neuronas_eliminar = Data.Integers(1, 10),
+        epocas = Data.Integers(1, 5000),
+        lr = lr_gen,
+        semilla = Data.Integers(1, 100000),
+        activacion = activacion_gen,
+        batch_size = Data.Integers(0, 100)
+    )
+        # Construct WITHOUT specifying gpu
+        config = ConfiguracionNube(
+            tamano_nube=tamano_nube,
+            topologia_inicial=topologia,
+            umbral_acierto=umbral,
+            neuronas_eliminar=neuronas_eliminar,
+            epocas_refinamiento=epocas,
+            tasa_aprendizaje=lr,
+            semilla=semilla,
+            activacion=activacion,
+            batch_size=batch_size
+        )
+
+        # gpu must default to false
+        config.gpu == false || return false
+
+        # All other fields must match provided values
+        config.tamano_nube == tamano_nube || return false
+        config.topologia_inicial == topologia || return false
+        config.umbral_acierto == umbral || return false
+        config.neuronas_eliminar == neuronas_eliminar || return false
+        config.epocas_refinamiento == epocas || return false
+        config.tasa_aprendizaje == lr || return false
+        config.semilla == semilla || return false
+        config.activacion == activacion || return false
+        config.batch_size == batch_size || return false
+
+        return true
+    end
+end
+
+# Feature: gpu-batched-cloud, Task 8.4: Unit tests for ConfiguracionNube and InformeNube modifications
+using RandomCloud: MotorNube, InformeNube, GPU_AVAILABLE
+
+@testset "Unit tests: ConfiguracionNube and InformeNube modifications" begin
+
+    @testset "gpu=true without CUDA raises ArgumentError" begin
+        @test GPU_AVAILABLE[] == false
+        @test_throws ArgumentError ConfiguracionNube(gpu=true)
+        try
+            ConfiguracionNube(gpu=true)
+        catch e
+            @test occursin("CUDA.jl must be added to use gpu=true", e.msg)
+        end
+    end
+
+    @testset "MotorNube 2-arg constructor (config, X, Y)" begin
+        config = ConfiguracionNube(topologia_inicial=[2, 3, 1])
+        X = Float64[0 0 1 1; 0 1 0 1]
+        Y = Float64[0 1 1 0]
+        motor = MotorNube(config, X, Y)
+        @test motor.config === config
+        @test motor.entradas === X
+        @test motor.objetivos === Y
+    end
+
+    @testset "MotorNube 3-arg constructor (config, X, Y, fn)" begin
+        config = ConfiguracionNube(topologia_inicial=[2, 3, 1])
+        X = Float64[0 0 1 1; 0 1 0 1]
+        Y = Float64[0 1 1 0]
+        fn_custom = (red, ent, obj; acts=nothing) -> 0.5
+        motor = MotorNube(config, X, Y, fn_custom)
+        @test motor.config === config
+        @test motor.entradas === X
+        @test motor.objetivos === Y
+        @test motor.fn_evaluar === fn_custom
+    end
+
+    @testset "InformeNube backward-compatible constructor defaults new fields to 0.0" begin
+        informe = InformeNube(nothing, 0.0, nothing, 0, 0, 0.0, false)
+        @test informe.gpu_tiempo_ms == 0.0
+        @test informe.pico_vram_mb == 0.0
+        @test informe.mejor_red === nothing
+        @test informe.precision == 0.0
+        @test informe.exitoso == false
+    end
+
+end

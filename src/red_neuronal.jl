@@ -73,6 +73,44 @@ function feedforward!(red::RedNeuronal, entrada::AbstractVector{Float64},
     return x
 end
 
+# --- Batched Feedforward ---
+# Computes feedforward for all samples simultaneously via matrix operations.
+# Works on both Matrix{Float64} (CPU) and CuMatrix{Float32} (GPU) via dispatch.
+
+"""
+    feedforward_batch(pesos, biases, X, acts) → Y
+
+Compute feedforward for all samples simultaneously.
+- pesos: Vector of weight matrices per layer
+- biases: Vector of bias vectors per layer
+- X: input data matrix (features × samples)
+- acts: activation symbol per layer
+Returns Y: output matrix (output_dim × samples)
+"""
+function feedforward_batch(
+    pesos::Vector{<:AbstractMatrix{T}},
+    biases::Vector{<:AbstractVector{T}},
+    X::AbstractMatrix{T},
+    acts::Vector{Symbol}
+) where T<:AbstractFloat
+    A = X
+    for i in eachindex(pesos)
+        Z = pesos[i] * A .+ biases[i]
+        A = aplicar_activacion_batch.(Z, acts[i])
+    end
+    return A
+end
+
+# Convenience method: defaults to sigmoid activation on every layer (Req 1.4)
+function feedforward_batch(
+    pesos::Vector{<:AbstractMatrix{T}},
+    biases::Vector{<:AbstractVector{T}},
+    X::AbstractMatrix{T}
+) where T<:AbstractFloat
+    acts = fill(:sigmoid, length(pesos))
+    return feedforward_batch(pesos, biases, X, acts)
+end
+
 # --- Entrenamiento con pre-alocación ---
 
 struct EntrenarBuffers
@@ -230,6 +268,61 @@ function entrenar_batch!(red::RedNeuronal, entradas::Matrix{Float64},
             end
         end
     end
+    return nothing
+end
+
+# --- Batched matrix backpropagation ---
+# Full-batch gradient computation via matrix ops — no sample loop.
+# Numerically equivalent to entrenar_batch! (lr/B per sample accumulation).
+# Works on both Matrix{Float64} (CPU) and CuMatrix{Float32} (GPU) via dispatch.
+
+"""
+    entrenar_batch_matmul!(pesos, biases, X_batch, Y_batch, lr, acts) → nothing
+
+Full-batch matrix backpropagation.
+- X_batch: (features × B) mini-batch input
+- Y_batch: (outputs × B) mini-batch targets
+All operations are matrix multiplications; no sample loop.
+"""
+function entrenar_batch_matmul!(
+    pesos::Vector{<:AbstractMatrix{T}},
+    biases::Vector{<:AbstractVector{T}},
+    X_batch::AbstractMatrix{T},
+    Y_batch::AbstractMatrix{T},
+    lr::T,
+    acts::Vector{Symbol}
+) where T<:AbstractFloat
+    n_capas = length(pesos)
+    B = T(size(X_batch, 2))
+
+    # --- Forward pass: store activations A[0..L] as matrices (neurons × B) ---
+    activaciones = Vector{AbstractMatrix{T}}(undef, n_capas + 1)
+    activaciones[1] = X_batch
+    for i in 1:n_capas
+        Z = pesos[i] * activaciones[i] .+ biases[i]
+        activaciones[i + 1] = aplicar_activacion_batch.(Z, acts[i])
+    end
+
+    # --- Backward pass ---
+    # δ[L] = (A[L] - Y) .* f'(A[L])
+    delta = (activaciones[n_capas + 1] .- Y_batch) .* aplicar_derivada_batch.(activaciones[n_capas + 1], acts[n_capas])
+
+    for i in n_capas:-1:1
+        # ∇W[i] = (1/B) * δ * A[i-1]'
+        grad_w = (one(T) / B) .* (delta * activaciones[i]')
+        # ∇b[i] = (1/B) * sum(δ, dims=2)
+        grad_b = vec(sum(delta, dims=2)) .* (one(T) / B)
+
+        # Update weights and biases
+        pesos[i] .-= lr .* grad_w
+        biases[i] .-= lr .* grad_b
+
+        # Propagate delta to previous layer (if not first layer)
+        if i > 1
+            delta = (pesos[i]' * delta) .* aplicar_derivada_batch.(activaciones[i], acts[i - 1])
+        end
+    end
+
     return nothing
 end
 

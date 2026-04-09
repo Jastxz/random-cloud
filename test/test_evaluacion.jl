@@ -245,3 +245,69 @@ end
         @test auc <= 1.0
     end
 end
+
+
+# Feature: gpu-batched-cloud, Property 3: Cloud evaluation accuracy equivalence
+# **Validates: Requirements 2.2, 2.3**
+
+using RandomCloud: evaluar_nube_batch, activaciones_por_capa
+using Supposition
+using Supposition: Data
+
+@testset "PBT Property 3: Cloud evaluation accuracy equivalence" begin
+
+    # Generator for random topologies (3-5 layers, sizes 1-10)
+    hidden_gen_p3 = Data.Vectors(Data.Integers(1, 10); min_size=1, max_size=3)
+    topo_gen_p3 = @composed function valid_topology_p3(
+        input_size = Data.Integers(1, 10),
+        hidden = hidden_gen_p3,
+        output_size = Data.Integers(2, 10)
+    )
+        return vcat([input_size], hidden, [output_size])
+    end
+
+    seed_gen_p3 = Data.Integers(1, 10_000)
+    n_networks_gen_p3 = Data.Integers(2, 10)
+    n_samples_gen_p3 = Data.Integers(5, 30)
+    act_sym_gen = Data.SampledFrom([:sigmoid, :relu, :identidad])
+
+    @check max_examples=100 function prop_cloud_eval_accuracy_equivalence(
+        topo = topo_gen_p3,
+        seed = seed_gen_p3,
+        N = n_networks_gen_p3,
+        n_samples = n_samples_gen_p3,
+        act_sym = act_sym_gen
+    )
+        n_features = topo[1]
+        n_classes = topo[end]
+        n_layers = length(topo) - 1
+
+        # Generate N random networks with the same topology
+        nube = [RedNeuronal(topo, MersenneTwister(seed + i)) for i in 1:N]
+
+        # Generate random input matrix X (features × samples)
+        rng_data = MersenneTwister(seed + 50_000)
+        X = 2.0 .* rand(rng_data, n_features, n_samples) .- 1.0
+
+        # Generate random one-hot target matrix Y (n_classes × samples)
+        Y = zeros(Float64, n_classes, n_samples)
+        for k in 1:n_samples
+            class_idx = rand(rng_data, 1:n_classes)
+            Y[class_idx, k] = 1.0
+        end
+
+        # Generate activation vector using activaciones_por_capa
+        acts = activaciones_por_capa(n_layers, act_sym)
+
+        # Batched cloud evaluation
+        batched = evaluar_nube_batch(nube, X, Y, acts)
+
+        # Individual evaluation per network
+        for i in 1:N
+            individual = evaluar(nube[i], X, Y; acts=acts)
+            abs(batched[i] - individual) <= 1e-10 || return false
+        end
+
+        return true
+    end
+end

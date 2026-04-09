@@ -37,3 +37,19 @@ function activaciones_por_capa(n_capas_pesos::Int, activacion::Symbol)
     acts[n_capas_pesos] = activacion === :identidad ? :identidad : :sigmoid
     return acts
 end
+
+
+# Versiones genéricas para operaciones batch — compatibles con Float32 (GPU) y Float64 (CPU)
+# Broadcastable sobre CuArray y Array gracias a parametrización en T<:AbstractFloat
+
+@inline function aplicar_activacion_batch(x::T, act::Symbol) where T<:AbstractFloat
+    act === :relu && return max(zero(T), x)
+    act === :identidad && return x
+    return one(T) / (one(T) + exp(-x))  # sigmoid
+end
+
+@inline function aplicar_derivada_batch(y::T, act::Symbol) where T<:AbstractFloat
+    act === :relu && return y > zero(T) ? one(T) : zero(T)
+    act === :identidad && return one(T)
+    return y * (one(T) - y)  # sigmoid derivative from output
+end

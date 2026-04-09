@@ -275,3 +275,190 @@ end
         return alguna_diferencia
     end
 end
+
+# Feature: gpu-batched-cloud, Property 1: Batched feedforward equivalence
+# **Validates: Requirements 1.1, 1.2, 1.3**
+
+using RandomCloud: feedforward_batch
+
+@testset "PBT Property 1: Batched feedforward equivalence" begin
+
+    # Generator for random topologies (3-5 layers, reasonable sizes)
+    hidden_gen_p1 = Data.Vectors(Data.Integers(1, 30); min_size=1, max_size=3)
+    topo_gen_p1 = @composed function valid_topology_p1(
+        input_size = Data.Integers(1, 20),
+        hidden = hidden_gen_p1,
+        output_size = Data.Integers(1, 10)
+    )
+        return vcat([input_size], hidden, [output_size])
+    end
+
+    seed_gen_p1 = Data.Integers(1, 10_000)
+    n_samples_gen = Data.Integers(1, 50)
+    act_gen = Data.Vectors(Data.SampledFrom([:sigmoid, :relu, :identidad]); min_size=1, max_size=4)
+
+    @check max_examples=100 function prop_batched_feedforward_equivalence(
+        topo = topo_gen_p1,
+        seed = seed_gen_p1,
+        n_samples = n_samples_gen,
+        raw_acts = act_gen
+    )
+        rng = MersenneTwister(seed)
+        red = RedNeuronal(topo, rng)
+
+        n_features = topo[1]
+        n_layers = length(topo) - 1
+
+        # Build activation vector matching the number of layers
+        acts = [raw_acts[mod1(i, length(raw_acts))] for i in 1:n_layers]
+
+        # Generate random input matrix X (features × samples)
+        rng2 = MersenneTwister(seed + 20_000)
+        X = 2.0 .* rand(rng2, n_features, n_samples) .- 1.0
+
+        # Batched feedforward
+        Y_batch = feedforward_batch(red.pesos, red.biases, X, acts)
+
+        # Column-by-column feedforward
+        for j in 1:n_samples
+            y_single = feedforward(red, X[:, j], acts)
+            for k in eachindex(y_single)
+                abs(Y_batch[k, j] - y_single[k]) <= 1e-10 || return false
+            end
+        end
+
+        return true
+    end
+end
+
+# Feature: gpu-batched-cloud, Task 2.3: Unit tests for feedforward_batch edge cases
+# **Validates: Requirements 1.1, 1.2, 1.3, 1.4**
+
+@testset "feedforward_batch edge cases" begin
+
+    @testset "Single-sample input (features × 1 matrix)" begin
+        red = RedNeuronal([3, 5, 2], MersenneTwister(42))
+        X = rand(MersenneTwister(99), 3, 1)  # 3 features, 1 sample
+        acts = [:sigmoid, :sigmoid]
+
+        Y = feedforward_batch(red.pesos, red.biases, X, acts)
+
+        @test size(Y) == (2, 1)
+        # Verify matches single-vector feedforward
+        y_single = feedforward(red, X[:, 1], acts)
+        @test all(abs.(Y[:, 1] .- y_single) .<= 1e-10)
+    end
+
+    @testset "Single-layer network" begin
+        # Topology [4, 3] — just one weight layer, no hidden layers
+        topo = [4, 3]
+        red = RedNeuronal(topo, MersenneTwister(77))
+        X = rand(MersenneTwister(88), 4, 5)  # 4 features, 5 samples
+        acts = [:sigmoid]
+
+        Y = feedforward_batch(red.pesos, red.biases, X, acts)
+
+        @test size(Y) == (3, 5)
+        # Verify each column matches single feedforward
+        for j in 1:5
+            y_single = feedforward(red, X[:, j], acts)
+            @test all(abs.(Y[:, j] .- y_single) .<= 1e-10)
+        end
+    end
+
+    @testset "Sigmoid default when acts omitted" begin
+        red = RedNeuronal([2, 4, 1], MersenneTwister(42))
+        X = rand(MersenneTwister(55), 2, 10)
+
+        # Call without acts — should default to sigmoid on all layers
+        Y_default = feedforward_batch(red.pesos, red.biases, X)
+        # Call with explicit sigmoid acts
+        Y_explicit = feedforward_batch(red.pesos, red.biases, X, [:sigmoid, :sigmoid])
+
+        @test size(Y_default) == size(Y_explicit)
+        @test all(abs.(Y_default .- Y_explicit) .<= 1e-15)
+    end
+
+    @testset "Identity activation produces linear output" begin
+        # With :identidad on all layers, output = W_L * ... * W_1 * X + accumulated biases
+        topo = [3, 4, 2]
+        red = RedNeuronal(topo, MersenneTwister(33))
+        X = rand(MersenneTwister(44), 3, 6)
+        acts = [:identidad, :identidad]
+
+        Y = feedforward_batch(red.pesos, red.biases, X, acts)
+
+        # Manually compute the linear transformation layer by layer
+        A = X
+        for i in eachindex(red.pesos)
+            A = red.pesos[i] * A .+ red.biases[i]
+        end
+
+        @test size(Y) == (2, 6)
+        @test all(abs.(Y .- A) .<= 1e-10)
+    end
+
+end
+
+# Feature: gpu-batched-cloud, Property 6: Batched backprop weight-update equivalence
+# **Validates: Requirements 4.2, 4.3**
+
+using RandomCloud: entrenar_batch_matmul!
+
+@testset "PBT Property 6: Batched backprop weight-update equivalence" begin
+
+    # Generator for random topologies (3-5 layers, small sizes for numerical stability)
+    hidden_gen_p6 = Data.Vectors(Data.Integers(1, 10); min_size=1, max_size=3)
+    topo_gen_p6 = @composed function valid_topology_p6(
+        input_size = Data.Integers(1, 8),
+        hidden = hidden_gen_p6,
+        output_size = Data.Integers(1, 5)
+    )
+        return vcat([input_size], hidden, [output_size])
+    end
+
+    seed_gen_p6 = Data.Integers(1, 10_000)
+    n_samples_gen_p6 = Data.Integers(1, 5)
+
+    @check max_examples=100 function prop_batched_backprop_weight_update_equivalence(
+        topo = topo_gen_p6,
+        seed = seed_gen_p6,
+        B = n_samples_gen_p6
+    )
+        n_layers = length(topo) - 1
+        n_features = topo[1]
+        n_output = topo[end]
+        acts = fill(:sigmoid, n_layers)
+
+        # Generate random input and target data
+        rng_data = MersenneTwister(seed + 30_000)
+        X = rand(rng_data, n_features, B)
+        Y = rand(rng_data, n_output, B)
+
+        # Use a small learning rate to minimize sequential-vs-batch divergence
+        lr = 1e-4
+
+        # --- Sequential path: entrenar! per sample with lr/B ---
+        red_seq = RedNeuronal(topo, MersenneTwister(seed))
+        lr_per_sample = lr / B
+        for k in 1:B
+            entrenar!(red_seq, X[:, k], Y[:, k], lr_per_sample)
+        end
+
+        # --- Batched path: entrenar_batch_matmul! ---
+        red_batch = RedNeuronal(topo, MersenneTwister(seed))
+        entrenar_batch_matmul!(red_batch.pesos, red_batch.biases, X, Y, lr, acts)
+
+        # Compare weights element-wise
+        for i in 1:n_layers
+            for idx in eachindex(red_seq.pesos[i])
+                abs(red_seq.pesos[i][idx] - red_batch.pesos[i][idx]) <= 1e-8 || return false
+            end
+            for idx in eachindex(red_seq.biases[i])
+                abs(red_seq.biases[i][idx] - red_batch.biases[i][idx]) <= 1e-8 || return false
+            end
+        end
+
+        return true
+    end
+end
