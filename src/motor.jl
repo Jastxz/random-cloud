@@ -87,15 +87,16 @@ end
 
 _usar_batched(config::ConfiguracionNube) = true
 
-function _ejecutar_gpu(motor::MotorNube)
-    error("GPU execution requires CUDA.jl extension. This should not be reached.")
-end
+function _ejecutar_gpu end  # stub — implemented by RandomCloudCUDAExt
 
 # --- Main dispatch ---
 
 function ejecutar(motor::MotorNube)
     config = motor.config
     if config.gpu
+        if !GPU_AVAILABLE[]
+            throw(ArgumentError("GPU execution requires CUDA.jl. Run: ] add CUDA"))
+        end
         return _ejecutar_gpu(motor)
     elseif _usar_batched(config)
         return _ejecutar_batched(motor)

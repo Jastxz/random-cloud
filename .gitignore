@@ -32,3 +32,18 @@ JuliaLocalPreferences.toml
 SuppositionDB/
 .cache*
 paper/
+
+
+# graphify
+graphify-out/cache/
+graphify-out/manifest.json
+graphify-out/cost.json
+graphify-out/.graphify_*
+
+# os
+.DS_Store
+Thumbs.db
+
+# ide
+.vscode/
+.idea/
