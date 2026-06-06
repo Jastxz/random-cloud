@@ -13,6 +13,11 @@ struct ConfiguracionNube
     activacion::Symbol
     batch_size::Int
     gpu::Bool
+    # Fase 2: exploración estructural
+    explorar_estructura::Bool
+    max_profundidad_split::Int
+    ancho_minimo_split::Int
+    n_candidatos_estructura::Int
 
     function ConfiguracionNube(;
         tamano_nube::Int = 10,
@@ -24,7 +29,11 @@ struct ConfiguracionNube
         semilla::Int = 42,
         activacion::Symbol = :sigmoid,
         batch_size::Int = 0,
-        gpu::Bool = false
+        gpu::Bool = false,
+        explorar_estructura::Bool = false,
+        max_profundidad_split::Int = 2,
+        ancho_minimo_split::Int = 4,
+        n_candidatos_estructura::Int = 10
     )
         tamano_nube < 1 && throw(ArgumentError(
             "tamano_nube debe ser ≥ 1, se recibió: $tamano_nube"))
@@ -52,8 +61,21 @@ struct ConfiguracionNube
         gpu && !GPU_AVAILABLE[] && throw(ArgumentError(
             "CUDA.jl must be added to use gpu=true. Run: ] add CUDA"))
 
+        max_profundidad_split < 1 && throw(ArgumentError(
+            "max_profundidad_split debe ser ≥ 1, se recibió: $max_profundidad_split"))
+        max_profundidad_split > 2 && throw(ArgumentError(
+            "max_profundidad_split debe ser ≤ 2, se recibió: $max_profundidad_split"))
+
+        ancho_minimo_split < 1 && throw(ArgumentError(
+            "ancho_minimo_split debe ser ≥ 1, se recibió: $ancho_minimo_split"))
+
+        n_candidatos_estructura < 1 && throw(ArgumentError(
+            "n_candidatos_estructura debe ser ≥ 1, se recibió: $n_candidatos_estructura"))
+
         new(tamano_nube, copy(topologia_inicial), umbral_acierto,
             neuronas_eliminar, epocas_refinamiento, tasa_aprendizaje, semilla,
-            activacion, batch_size, gpu)
+            activacion, batch_size, gpu,
+            explorar_estructura, max_profundidad_split, ancho_minimo_split,
+            n_candidatos_estructura)
     end
 end

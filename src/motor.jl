@@ -89,6 +89,42 @@ _usar_batched(config::ConfiguracionNube) = true
 
 function _ejecutar_gpu end  # stub — implemented by RandomCloudCUDAExt
 
+# --- Fase 2 integration helper ---
+
+"""
+Aplica la Fase 2 (exploración estructural) sobre el resultado de Fase 1.
+Si Fase 2 mejora, actualiza el informe; si no, retorna el informe de Fase 1 intacto.
+"""
+function _integrar_fase2(informe_fase1::InformeNube, motor::MotorNube)
+    config = motor.config
+    if !config.explorar_estructura || informe_fase1.mejor_red === nothing
+        return informe_fase1
+    end
+
+    resultado_f2 = explorar_estructura(informe_fase1.mejor_red, motor.entradas,
+                                        motor.objetivos, config, motor.fn_evaluar)
+
+    if resultado_f2.mejor_red !== nothing && resultado_f2.mejor_precision > informe_fase1.precision
+        # Fase 2 mejoró: actualizar informe
+        return InformeNube(resultado_f2.mejor_red, resultado_f2.mejor_precision,
+                           resultado_f2.topologia_final,
+                           informe_fase1.total_redes_evaluadas + resultado_f2.candidatos_evaluados,
+                           informe_fase1.total_reducciones,
+                           informe_fase1.tiempo_ejecucion_ms, true,
+                           informe_fase1.gpu_tiempo_ms, informe_fase1.pico_vram_mb,
+                           resultado_f2, true)
+    else
+        # Fase 2 no mejoró: mantener Fase 1, pero registrar que se ejecutó
+        return InformeNube(informe_fase1.mejor_red, informe_fase1.precision,
+                           informe_fase1.topologia_final,
+                           informe_fase1.total_redes_evaluadas + resultado_f2.candidatos_evaluados,
+                           informe_fase1.total_reducciones,
+                           informe_fase1.tiempo_ejecucion_ms, informe_fase1.exitoso,
+                           informe_fase1.gpu_tiempo_ms, informe_fase1.pico_vram_mb,
+                           resultado_f2, false)
+    end
+end
+
 # --- Main dispatch ---
 
 function ejecutar(motor::MotorNube)
@@ -97,12 +133,15 @@ function ejecutar(motor::MotorNube)
         if !GPU_AVAILABLE[]
             throw(ArgumentError("GPU execution requires CUDA.jl. Run: ] add CUDA"))
         end
-        return _ejecutar_gpu(motor)
+        informe = _ejecutar_gpu(motor)
     elseif _usar_batched(config)
-        return _ejecutar_batched(motor)
+        informe = _ejecutar_batched(motor)
     else
-        return _ejecutar_legacy(motor)
+        informe = _ejecutar_legacy(motor)
     end
+
+    # Fase 2: exploración estructural (si está activada)
+    return _integrar_fase2(informe, motor)
 end
 
 # --- Legacy path: exact copy of original ejecutar logic ---

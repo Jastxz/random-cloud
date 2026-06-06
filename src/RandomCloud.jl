@@ -18,6 +18,9 @@ export evaluar_nube_batch
 export entrenar_batch_matmul!
 export GPU_AVAILABLE
 export a_gpu, de_gpu, estimar_vram, verificar_gpu
+export TipoOperacion, OP_COLAPSO, OP_SPLIT_1, OP_SPLIT_2, OP_COMBINADA
+export CandidatoEstructural, ResultadoFase2
+export colapsar_capa, redistribuir_capa, generar_candidatos, explorar_estructura
 
 const GPU_AVAILABLE = Ref(false)
 
@@ -27,8 +30,9 @@ include("red_neuronal.jl")
 include("lotes.jl")
 include("politica.jl")
 include("evaluacion.jl")
-include("motor.jl")
+include("fase2_estructura.jl")
 include("informe.jl")
+include("motor.jl")
 
 # GPU extension stubs — overridden by ext/RandomCloudCUDAExt when CUDA.jl is loaded
 function a_gpu end
